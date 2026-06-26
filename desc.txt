@@ -1,0 +1,147 @@
+🔥Industry-Level Django + React Deployment with Docker, CI/CD Pipeline:
+👉Check it out: https://bit.ly/djdeployudemy
+
+🔥8-Week Intensive Backend Developer Program:
+https://youtu.be/-wxYbQCf5oU
+
+Welcome to this complete full-stack crash course where you’ll learn how to build a real-world web application step by step using Django REST Framework and React.js.
+
+What You’ll Learn:
+✅ React.js essentials (only what you need)
+✅ Connecting Django APIs with React frontend
+✅ Building secure authentication (JWT tokens)
+✅ Creating a dynamic portal interface
+✅ Managing protected routes & interceptors
+✅ Best practices for full-stack development
+
+Whether you’re an aspiring full-stack developer or a freelancer wanting to build production-ready apps, this free course gives you everything you need to get started.
+
+🎁 This is a premium course made available for free.
+
+👉 Enroll in my complete Django + React + Machine Learning course here: 
+https://bit.ly/stock-prediction-django
+
+💪🏼Join our Discord community: 
+https://discord.gg/jD3eDEvbav
+
+⬇️ Source code:
+https://github.com/dev-rathankumar/stock-prediction-portal
+
+📚 Udemy Courses - Build Your Portfolio:
+✅ Python Django - Build Complex MultiVendor Ecommerce System
+https://bit.ly/djcomplex-project
+
+✅ Full Stack Machine Learning | Django REST Framework, React
+https://bit.ly/djml
+
+✅ Automate The Boring Stuff With Django
+https://bit.ly/4wIJDeE
+
+✅ Advanced Python Django Ecommerce Website Development Course
+https://bit.ly/djgreatkart
+
+✅ Industry-Level Django + React Deployment with Docker, CI/CD
+https://bit.ly/djdeployudemy
+
+⏰ Timestamps:
+00:00:00 - 01. Introduction
+
+--React.js Introduction & Installation--
+00:03:12 - 02. React JS Introduction
+00:04:00 - 03. Components & Virtual DOM
+00:06:29 - 04. Pre-requisite for React.js
+00:06:59 - 05. Install Node.js
+00:10:12 - 06. Create React app using NPX
+00:14:39 - 07. Create a React project with Vite
+00:18:56 - 08. React Directory Structure
+00:31:30 - 09. Edit the default React app
+00:34:37 - 10. Deleting the default React app
+
+--React.js Fundamentals--
+00:39:34 - 11. Components
+00:46:43 - 12. React Fragment
+00:49:36 - 13. JSX
+00:58:32 - 14. Props
+01:04:31 - 15. Events
+01:10:39 - 16. Lifting State Up
+01:18:17 - 17. State
+01:24:35 - 18. useState with Objects
+01:29:57 - 19. Counter App
+01:35:03 - 20. useEffect Hook
+01:45:50 - 21. Cleanup functions in useEffect
+01:48:35 - 22. useMemo Hook
+02:04:17 - 23. Prop Drilling
+02:11:07 - 24. Context API
+02:25:20 - 25. useContext Hook
+02:29:28 - 26. useRef Hook
+02:44:30 - 27. Custom Hooks
+02:52:19 - 28. Conditional Rendering
+02:57:32 - 29. Map Function
+03:02:38 - 30. Inline CSS
+03:09:29 - 31. Internal & External CSS
+03:35:58 - 32. Loading Images
+03:19:34 - 33. Forms - Part 1
+03:27:25 - 34. Forms - Part 2
+03:34:13 - 35. Wrapping up React
+
+--Introduction to the Portal--
+03:35:22 - 36. Backend Django Setup
+03:41:34 - 37. Frontend React Setup
+03:46:01 - 38. Clearing default code from React
+03:48:56 - 39. Store secret info.
+03:54:33 - 40. GitHub Setup
+
+--Implementing React Components--
+04:00:03 - 41. Bootstrap CDN
+04:06:03 - 42. Components Setup
+04:10:08 - 43. Header Design
+04:13:31 - 44. Main Component Design
+04:21:13 - 45. Footer Component
+04:24:08 - 46. Button Component
+04:31:18 - 47. Git Push
+
+--Setting Up Django REST Framework & Serializers--
+04:32:12 - 48. Migrate & Create Superuser
+04:34:43 - 49. Install Django REST Framework
+04:37:08 - 50. User Serializer
+04:46:13 - 51. Register View
+04:48:57 - 52. API
+04:56:04 - 53. Git Push
+
+--Registration Design & Functionality--
+04:56:50 - 54. Creating Routes in React
+05:06:08 - 55. Using the Link component to navigate
+05:11:56 - 56. Design Register Page
+05:18:30 - 57. Registration Part 1
+05:27:10 - 58. Registration using Axios
+05:35:56 - 59. Adding CORS Header
+05:40:58 - 60. Error Handling
+05:48:21 - 61. Clear errors & show success message
+05:51:57 - 62. Loading... button
+05:59:32 - 63. Git Push
+
+--Login Functionality with Simple JWT--
+06:00:14 - 64. SimpleJWT Implementation
+06:07:03 - 65. Login API Request
+06:17:15 - 66. Log in with Error handling
+06:24:22 - 67. Auth Context
+06:36:52 - 68. Logout Functionality
+
+--Authentication Functionalities -Frontend & Backend--
+06:41:20 - 69. Access Token & Refresh Token workflow
+06:44:45 - 70. Creating a Protected View
+06:53:09 - 71. Dashboard Component
+06:56:31 - 72. Accessing Protected Endpoint
+07:03:43 - 73. Axios Interceptors
+07:06:59 - 74. Axios Instance
+07:14:17 - 75. Using Request Interceptor
+07:25:41 - 76. Using Response Interceptor
+07:39:39 - 77. Private Route
+07:46:36 - 78. Public Route
+07:50:13 - 79. Thank You & What's Next?
+
+#django #react #fullstackdevelopment #webdevelopment #python #javascript #coding #programming #djangoRESTframework #reactjs #freecourse #crashcourse #softwaredevelopment
+
+
+👑 Join this channel to get access to all the premium courses:
+https://www.youtube.com/channel/UCYesptHRU1QZ2pHZkAqdQTw/join
