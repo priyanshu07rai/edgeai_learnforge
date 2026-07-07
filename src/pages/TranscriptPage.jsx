@@ -285,34 +285,6 @@ export default function TranscriptPage() {
           onClearError={() => setError(null)}
         />
 
-        {/* ── Persistent Video Player ─────────────────────────────────────────
-             Rendered once when user picks a file or loads an existing session.
-             Starts with blob URL instantly. Falls back to backend video URL.
-             YouTube videos use an iframe instead.                               */}
-        {(localVideoUrl || transcriptData?.youtube_video_id || (videoId && !transcriptData?.youtube_video_id)) && (
-          <div
-            ref={videoWrapperRef}
-            className="w-full max-w-3xl mx-auto bg-black rounded-xl overflow-hidden border border-[#2a2a2a] shadow-lg flex justify-center transition-all mb-4"
-          >
-            {transcriptData?.youtube_video_id ? (
-              <iframe
-                src={`https://www.youtube.com/embed/${transcriptData.youtube_video_id}?enablejsapi=1`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                style={{ width: '100%', aspectRatio: '16/9', border: 'none' }}
-              />
-            ) : (
-              <video
-                ref={videoRef}
-                src={localVideoUrl || (videoId ? getVideoUrl(videoId) : '')}
-                controls
-                preload="metadata"
-                style={{ width: '100%', display: 'block', background: '#000' }}
-              />
-            )}
-          </div>
-        )}
-
         {isProcessingTranscript && <LoadingState phase="transcript" progress={transcriptProgress} />}
         {isProcessingTopics && <LoadingState phase="topics" />}
         {/* TopicProcessor only for error display */}
@@ -321,6 +293,31 @@ export default function TranscriptPage() {
         {/* Main study panel */}
         {!isProcessingTranscript && !isProcessingTopics && transcriptData && (
           <div className="w-full flex flex-col gap-6">
+
+            {/* Video Player */}
+            {(localVideoUrl || transcriptData?.youtube_video_id || (videoId && !transcriptData?.youtube_video_id)) && (
+              <div
+                ref={videoWrapperRef}
+                className="w-full max-w-3xl mx-auto bg-black rounded-xl overflow-hidden border border-[#2a2a2a] shadow-lg flex justify-center transition-all mb-4"
+              >
+                {transcriptData?.youtube_video_id ? (
+                  <iframe
+                    src={`https://www.youtube.com/embed/${transcriptData.youtube_video_id}?enablejsapi=1`}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    style={{ width: '100%', aspectRatio: '16/9', border: 'none' }}
+                  />
+                ) : (
+                  <video
+                    ref={videoRef}
+                    src={localVideoUrl || (videoId ? getVideoUrl(videoId) : '')}
+                    controls
+                    preload="metadata"
+                    style={{ width: '100%', display: 'block', background: '#000' }}
+                  />
+                )}
+              </div>
+            )}
 
             {/* Toolbar */}
             <div className="flex items-center justify-end gap-2">
