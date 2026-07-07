@@ -16,20 +16,32 @@ body {
 }
 
 /* Custom minimal scrollbar for transcript viewing panel */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #2a2a3e;
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #40405a;
+  }
 
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: #111111;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #262626;
-  border-radius: 4px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #7C3AED;
-}
+  /* 3D Flip Utilities */
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  .preserve-3d {
+    transform-style: preserve-3d;
+  }
+  .backface-hidden {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .rotate-y-180 {
+    transform: rotateY(180deg);
+  }

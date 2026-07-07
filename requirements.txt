@@ -7,4 +7,6 @@ numpy
 requests
 python-multipart
 spacy
-
+faster-whisper
+youtube-transcript-api
+python-dotenv

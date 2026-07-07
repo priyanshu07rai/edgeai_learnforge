@@ -13,7 +13,8 @@ import tempfile
 import shutil
 import http.cookiejar
 import requests
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks, Request
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -34,6 +35,9 @@ from flashcard_generator import generate_flashcards_for_video, generate_flashcar
 from quiz_generator import generate_quiz_for_video, generate_quiz_for_single_topic
 from qa_engine import answer_question
 from extractor import extract_knowledge_units, calculate_concept_density
+from transcript_refiner import refine_transcript, refine_transcript_segment
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from graph_extractor import generate_graph_for_single_topic
 
 app = FastAPI(title="LearnForge AI API")
 
@@ -349,9 +353,11 @@ async def generate_transcript(
         print(f"[LearnForge API] Local MP4 upload detected: {filename}")
         print(f"[LearnForge API] Saving uploaded file to temp storage...")
 
-        # Save uploaded file to a temporary location
-        tmp_dir = tempfile.mkdtemp()
-        tmp_path = os.path.join(tmp_dir, filename)
+        # Save uploaded file to a permanent location for streaming later
+        video_dir = os.path.join(STORAGE_DIR, video_id)
+        os.makedirs(video_dir, exist_ok=True)
+        tmp_dir = video_dir  # use video_dir instead of temporary dir
+        tmp_path = os.path.join(video_dir, "video.mp4")
         try:
             file_bytes = await file.read()
             with open(tmp_path, "wb") as f_out:
@@ -471,14 +477,19 @@ async def generate_transcript(
                 _transcription_progress[video_id]["done"] = True
 
         except Exception as whisper_err:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
             print(f"[LearnForge API] Whisper transcription failed: {whisper_err}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Audio transcription failed: {str(whisper_err)}. Make sure the file contains valid audio."
             )
         finally:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
+            # Clean up the generated WAV file, but KEEP the MP4 for frontend streaming
+            wav_path = os.path.join(tmp_dir, "audio.wav")
+            if os.path.exists(wav_path):
+                try:
+                    os.remove(wav_path)
+                except:
+                    pass
         
     elif youtube_url:
         yt_id = extract_youtube_video_id(youtube_url)
@@ -542,6 +553,12 @@ async def generate_transcript(
         if "text" in seg:
             seg["text"] = heal_transcript_vocabulary(seg["text"])
 
+    # Apply lightweight deterministic transcript refinement (grammar/capitalization/filler)
+    transcript = refine_transcript(transcript)
+    for seg in segments:
+        if "text" in seg:
+            seg["text"] = refine_transcript_segment(seg["text"])
+
     payload = {
         "video_id": video_id,
         "youtube_video_id": youtube_video_id,
@@ -594,27 +611,69 @@ def prefetch_video_assets(video_id: str, storage_dir: str):
             return
         with open(topics_path, encoding='utf-8') as f:
             topics = json.load(f)
+            
+        # Build FAISS index in the background to avoid blocking the UI
+        try:
+            transcript_path = os.path.join(video_dir, "transcript.json")
+            if os.path.exists(transcript_path):
+                with open(transcript_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                chunks = chunk_transcript(data.get("segments", []), topics)
+                build_and_persist_index(chunks, video_dir)
+                
+                metadata = {
+                    "video_id": video_id,
+                    "chunk_count": len(chunks),
+                    "embedding_model": "all-MiniLM-L6-v2",
+                    "index_type": "faiss-flat-ip"
+                }
+                with open(os.path.join(video_dir, "metadata.json"), "w", encoding="utf-8") as f:
+                    json.dump(metadata, f, indent=2)
+                print(f"[LearnForge Prefetch] FAISS index built successfully for video {video_id}.")
+        except Exception as e:
+            print(f"[LearnForge Prefetch] FAISS indexing error: {e}")
         
         from notes_generator import generate_notes_for_single_topic
         from flashcard_generator import generate_flashcards_for_single_topic
         from quiz_generator import generate_quiz_for_single_topic
         
-        for i in range(len(topics)):
-            try:
-                generate_notes_for_single_topic(video_id, i, storage_dir)
-            except Exception as e:
-                print(f"[LearnForge Prefetch] Notes failed for topic {i}: {e}")
-            
-            try:
-                generate_flashcards_for_single_topic(video_id, i, storage_dir)
-            except Exception as e:
-                print(f"[LearnForge Prefetch] Flashcards failed for topic {i}: {e}")
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            futures = []
+            for i in range(len(topics)):
+                def run_notes(topic_idx=i):
+                    try:
+                        generate_notes_for_single_topic(video_id, topic_idx, storage_dir)
+                    except Exception as e:
+                        print(f"[LearnForge Prefetch] Notes failed for topic {topic_idx}: {e}")
+                        
+                def run_flashcards(topic_idx=i):
+                    try:
+                        generate_flashcards_for_single_topic(video_id, topic_idx, storage_dir)
+                    except Exception as e:
+                        print(f"[LearnForge Prefetch] Flashcards failed for topic {topic_idx}: {e}")
+                        
+                def run_quiz(topic_idx=i):
+                    try:
+                        generate_quiz_for_single_topic(video_id, topic_idx, storage_dir)
+                    except Exception as e:
+                        print(f"[LearnForge Prefetch] Quiz failed for topic {topic_idx}: {e}")
+                        
+                def run_graph(topic_idx=i):
+                    try:
+                        generate_graph_for_single_topic(video_id, topic_idx, storage_dir)
+                    except Exception as e:
+                        print(f"[LearnForge Prefetch] Graph failed for topic {topic_idx}: {e}")
+                        
+                # Submit ALL tasks across ALL topics to run simultaneously
+                futures.append(executor.submit(run_notes))
+                futures.append(executor.submit(run_flashcards))
+                futures.append(executor.submit(run_quiz))
+                futures.append(executor.submit(run_graph))
                 
-            try:
-                generate_quiz_for_single_topic(video_id, i, storage_dir)
-            except Exception as e:
-                print(f"[LearnForge Prefetch] Quiz failed for topic {i}: {e}")
-                
+            # Wait for all background tasks for this video to complete
+            for future in as_completed(futures):
+                future.result()
+
         print(f"[LearnForge Prefetch] Completed background pre-generation for video {video_id}.")
     except Exception as e:
         print(f"[LearnForge Prefetch] Error in prefetch task: {e}")
@@ -700,13 +759,35 @@ async def process_transcript(req: ProcessRequest, background_tasks: BackgroundTa
         from notes_generator import merge_introduction_topics
         topics = merge_introduction_topics(video_id, STORAGE_DIR)
 
-        # Enrich final topics list with concept density badges
+        # Enrich final topics list with concept density badges (PARALLELIZED)
         corpus = [t.get("content", "") for t in topics if t.get("content", "")]
-        for topic in topics:
-            knowledge = extract_knowledge_units(topic.get("content", ""), topic.get("title", ""), corpus=corpus)
-            density_info = calculate_concept_density(knowledge, topic.get("title", ""))
+        
+        def process_topic_density(topic):
+            content = topic.get("content", "")
+            title = topic.get("title", "")
+            if not content:
+                topic["density"] = 0
+                topic["density_badge"] = "Empty"
+                return topic
+            knowledge = extract_knowledge_units(content, title, corpus=corpus)
+            density_info = calculate_concept_density(knowledge, title)
             topic["density"] = density_info["density"]
             topic["density_badge"] = density_info["badge"]
+            return topic
+
+        # Use ThreadPoolExecutor to safely process topics concurrently
+        topics_enriched = []
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            future_to_topic = {executor.submit(process_topic_density, t): t for t in topics}
+            for future in as_completed(future_to_topic):
+                try:
+                    topics_enriched.append(future.result())
+                except Exception as exc:
+                    print(f"[LearnForge API] Density extraction generated an exception: {exc}")
+                    
+        # Restore original sequential order
+        topic_title_map = {t.get("title"): t for t in topics_enriched}
+        topics = [topic_title_map.get(t.get("title"), t) for t in topics]
 
         # Write final enriched topics back to topics.json
         with open(os.path.join(video_dir, "topics.json"), "w", encoding="utf-8") as f:
@@ -722,24 +803,7 @@ async def process_transcript(req: ProcessRequest, background_tasks: BackgroundTa
         print(f"[LearnForge API] Topic extraction error: {e}")
         raise HTTPException(status_code=500, detail="Topic extraction failed.")
 
-    # 2. Chunk & Vector DB Indexing
-    try:
-        chunks = chunk_transcript(data.get("segments", []), topics)
-        build_and_persist_index(chunks, video_dir)
-
-        metadata = {
-            "video_id": video_id,
-            "chunk_count": len(chunks),
-            "embedding_model": "all-MiniLM-L6-v2",
-            "index_type": "faiss-flat-ip"  # L2-normalized IndexFlatIP = cosine similarity
-        }
-        with open(os.path.join(video_dir, "metadata.json"), "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2)
-    except Exception as e:
-        print(f"[LearnForge API] FAISS indexing error: {e}")
-        raise HTTPException(status_code=500, detail="Index creation failed.")
-
-    # Trigger asynchronous background prefetch of all notes/flashcards/quiz assets
+    # Trigger asynchronous background prefetch of all notes/flashcards/quiz assets & FAISS Indexing
     background_tasks.add_task(prefetch_video_assets, video_id, STORAGE_DIR)
 
     return {
@@ -747,6 +811,61 @@ async def process_transcript(req: ProcessRequest, background_tasks: BackgroundTa
         "topics": topics
     }
 
+@app.get("/video/{video_id}/stream.mp4")
+async def get_video(video_id: str, request: Request):
+    """Serve the saved MP4 file for frontend streaming with proper Range support."""
+    video_path = os.path.join(STORAGE_DIR, video_id, "video.mp4")
+    if not os.path.exists(video_path):
+        raise HTTPException(status_code=404, detail="Video file not found.")
+        
+    file_size = os.path.getsize(video_path)
+    range_header = request.headers.get("Range", None)
+
+    if range_header:
+        byte_range = range_header.replace("bytes=", "").split("-")
+        start = int(byte_range[0])
+        
+        if start >= file_size:
+            from fastapi import Response
+            return Response(
+                status_code=416,
+                headers={"Content-Range": f"bytes */{file_size}", "Accept-Ranges": "bytes"}
+            )
+            
+        end = int(byte_range[1]) if len(byte_range) > 1 and byte_range[1] else file_size - 1
+        end = min(end, file_size - 1)
+        chunk_size = end - start + 1
+        
+        def iterfile():
+            with open(video_path, "rb") as f:
+                f.seek(start)
+                bytes_to_read = chunk_size
+                while bytes_to_read > 0:
+                    read_size = min(65536, bytes_to_read)
+                    data = f.read(read_size)
+                    if not data:
+                        break
+                    bytes_to_read -= len(data)
+                    yield data
+                    
+        headers = {
+            "Content-Range": f"bytes {start}-{end}/{file_size}",
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(chunk_size),
+            "Content-Type": "video/mp4",
+        }
+        return StreamingResponse(iterfile(), status_code=206, headers=headers)
+    else:
+        def iterfile():
+            with open(video_path, "rb") as f:
+                while chunk := f.read(65536):
+                    yield chunk
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(file_size),
+            "Content-Type": "video/mp4",
+        }
+        return StreamingResponse(iterfile(), status_code=200, headers=headers)
 
 @app.get("/debug/{video_id}")
 async def debug_video(video_id: str):
@@ -818,6 +937,17 @@ async def get_flashcards(req: ProcessRequest):
     except Exception as e:
         print(f"[LearnForge API] Flashcards generation error: {e}")
         raise HTTPException(status_code=500, detail="Flashcards generation failed.")
+
+@app.get("/graph/{video_id}/{topic_index}")
+async def get_topic_graph(video_id: str, topic_index: int):
+    """Returns the generated Strict Knowledge Graph for a topic."""
+    video_dir = os.path.join(STORAGE_DIR, video_id)
+    cache_path = os.path.join(video_dir, "graph_cache", f"topic_{topic_index}_graph.json")
+    if os.path.exists(cache_path):
+        with open(cache_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    else:
+        raise HTTPException(status_code=404, detail="Knowledge Graph not found or still generating")
 
 @app.post("/quiz/generate")
 async def get_quiz(req: ProcessRequest):

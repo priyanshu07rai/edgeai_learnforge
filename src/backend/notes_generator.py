@@ -19,7 +19,8 @@ import os
 import json
 import requests
 import re
-from collections import Counter
+import tempfile
+from collections import Counter, OrderedDict
 try:
     import spacy
     try:
@@ -144,8 +145,15 @@ def generate_notes_for_single_topic(
     if topics_list:
         result = apply_cross_topic_linking(topic_index, result, topics_list)
 
-    with open(cache_path, "w", encoding='utf-8') as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
+    dir_name = os.path.dirname(cache_path)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.json')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, cache_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
     return result
 
@@ -167,6 +175,74 @@ def _enforce_context_budget(text: str, max_chars: int = 8000) -> str:
         cut = cut[:last_stop + 1]
 
     return cut.strip()
+
+
+# ── Code-block syntax patterns (used by sanitizer) ─────────────────────────────
+_REAL_CODE_RE = re.compile(
+    r'(?:^|\n)[ \t]*(?:'
+    r'def \w+\s*\(|'
+    r'class \w+[:(]|'
+    r'import \w|'
+    r'from \w+ import|'
+    r'const |let |var |function\s+\w+\s*\(|'
+    r'=>|'
+    r'\w+\(\)|'
+    r'return |'
+    r'elif |else:|except:|'
+    r'lambda |yield |async def|await |'
+    r'#include|'
+    r'\$\s*\w+|'
+    r'pip install|npm install|git |docker |curl |wget'
+    r')',
+    re.MULTILINE
+)
+
+
+def sanitize_markdown_code_blocks(markdown: str) -> str:
+    """
+    Post-process LLM-generated markdown to remove false-positive code blocks.
+
+    Rules:
+    - Empty or whitespace-only code blocks → removed entirely.
+    - Code blocks whose content does NOT match real code syntax patterns AND
+      has fewer than 3 lines → demoted to plain bullet-point paragraphs.
+    - Everything else (real code) → kept as-is.
+    """
+    if not markdown:
+        return markdown
+
+    # Regex that captures: ```<lang>\n<content>\n``` or ```<content>```
+    fence_re = re.compile(r'```([a-zA-Z]*)\n?(.*?)```', re.DOTALL)
+
+    def _handle_fence(m):
+        lang = m.group(1).strip()
+        content = m.group(2)
+        stripped = content.strip()
+
+        # Rule 1: Empty block → remove
+        if not stripped:
+            return ''
+
+        # Rule 2: Check if it looks like real code
+        has_real_code = bool(_REAL_CODE_RE.search(stripped))
+        lines = [l for l in stripped.splitlines() if l.strip()]
+        is_multiline = len(lines) >= 2
+
+        if has_real_code or (is_multiline and len(stripped) > 80):
+            # Keep as code block, ensure language tag is on its own line
+            lang_tag = lang if lang else ''
+            return f'```{lang_tag}\n{stripped}\n```'
+
+        # Rule 3: It's prose that was wrongly fenced → demote to bullet point
+        # Join lines and return as a plain paragraph
+        prose = ' '.join(lines)
+        return f'- {prose}'
+
+    sanitized = fence_re.sub(_handle_fence, markdown)
+
+    # Collapse 3+ consecutive blank lines into 2
+    sanitized = re.sub(r'\n{3,}', '\n\n', sanitized)
+    return sanitized.strip()
 
 
 def extract_knowledge_units_multi_window(cleaned: str, topic_title: str, corpus: list = None) -> dict:
@@ -360,16 +436,27 @@ def _run_pipeline(topic_title, topic_id, topic_text, topic_index, video_dir, oll
     Generate knowledge first, cache it, and then build study notes from it.
     """
     knowledge = _run_pipeline_for_knowledge(topic_title, topic_id, topic_text, topic_index, video_dir, ollama_url)
-    
-    # Save the knowledge cache
+
+    # Save the knowledge cache atomically
     cache_dir = os.path.join(video_dir, "notes_cache")
     os.makedirs(cache_dir, exist_ok=True)
     knowledge_cache_path = os.path.join(cache_dir, f"topic_{topic_index}_knowledge.json")
-    with open(knowledge_cache_path, "w", encoding='utf-8') as f:
-        json.dump(knowledge, f, indent=2, ensure_ascii=False)
+    
+    fd, tmp_path = tempfile.mkstemp(dir=cache_dir, suffix='.json')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(knowledge, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, knowledge_cache_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
     detailed = build_notes_from_knowledge(knowledge, topic_title)
     revision = build_quick_revision_30s(detailed, topic_title)
+
+    # Sanitize the markdown to remove false-positive code blocks before caching
+    raw_md = detailed.get("markdown", "")
+    detailed["markdown"] = sanitize_markdown_code_blocks(raw_md)
 
     result = {
         "topic": topic_title,
@@ -383,7 +470,7 @@ def _run_pipeline(topic_title, topic_id, topic_text, topic_index, video_dir, oll
         "density": detailed.get("density", "Light"),
         "density_badge": detailed.get("density_badge", "🟢 Light")
     }
-    
+
     return result
 
 
@@ -480,7 +567,10 @@ def _call_llm_to_extract_knowledge(topic_title: str, cleaned_text: str, gemini_k
     Three-pass LLM pipeline that extracts the exact Knowledge Layer JSON schema.
     """
     # Step 1: Cleaning Agent
-    cleaning_prompt = f"""You are a transcript cleaning assistant.
+    cleaning_prompt = f"""You are
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+ a transcript cleaning assistant.
 Your job is to clean this transcript section for educational study notes.
 - Remove YouTube filler words, announcements, sponsor slots, subscribe requests, greetings (e.g., "Hello everyone", "Welcome back", "Subscribe to the channel").
 - Remove conversational filler words and spoken narration (e.g., "okay", "uh", "all right", "you know", "let's see", "one second", "now let's go here", "let's start", "I am going to").
@@ -507,7 +597,10 @@ Return ONLY the cleaned educational text, maintaining the factual information wi
         raw_cleaned = cleaned_text
 
     # Step 2: Knowledge Extraction Agent
-    extraction_prompt = f"""You are an educational knowledge extraction engine.
+    extraction_prompt = f"""You are
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+ an educational knowledge extraction engine.
 Your task is to convert this free-form educational text into structured concepts and facts.
 Do NOT summarize yet. Just extract the facts and entities as they are described.
 Do NOT assume or invent any facts or patterns not explicitly present in the text.
@@ -563,13 +656,17 @@ Return ONLY a JSON object with this exact structure (no markdown wrapper, no oth
 
     # Step 3: Teacher Agent (Refinement)
     teacher_prompt = f"""# Role and Objective
-You are the AI engine refine raw knowledge units extracted from a lecture transcript into a perfect, textbook-quality structured Knowledge Layer JSON payload.
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
 
-# Style and Quality Rules
-- **Third-Person Objective Voice Only:** Never use "I", "me", "my", "you", "we", "us", "let's", or "the instructor". Rewrite all actions objectively (e.g., instead of "I'll open VS Code", write "Open the project folder in Visual Studio Code").
-- **Zero Transcript Leakage:** Never copy raw conversational stumbles or self-promotional pitches.
-- **High-Density Technical Rephrasing:** Turn messy spoken explanations into polished, professional textbook-quality prose.
-- **Strict Truthfulness:** Only include facts, steps, code, or examples that are actually present or described in the structured knowledge. Do NOT invent new commands, code, or APIs.
+You are a senior educational content specialist. Your job is to refine raw knowledge units extracted from a lecture transcript into a structured Knowledge Layer JSON payload that reads like professional lecture notes — not a summary, not a transcript fragment, and not a bullet dump.
+
+# Core Quality Rules
+- **Truthfulness First:** Only include information that is ACTUALLY present in the extracted knowledge. Do NOT invent new facts, steps, commands, or examples.
+- **Cohesive Explanation:** The \"explanation\" field MUST be written as a flowing, connected narrative paragraph. It should logically connect the concept's core ideas in the order the instructor presented them. Do not reduce it to a single sentence — expand it to capture the full reasoning chain from the transcript.
+- **Preserve Instructor Reasoning:** If the instructor gave an analogy, a "why" explanation, or a step-by-step breakdown, ensure this reasoning is captured in the \"explanation\" field or the appropriate list field. Do NOT compress or omit it.
+- **No Placeholder Text:** Never write \"N/A\", \"Not mentioned\", or empty strings. If a field has no data, use an empty list [] or empty string \"\".
+- **Third-Person Objective Voice:** Rewrite first-person instructor speech objectively (e.g., \"I'll show you\" → \"The following example demonstrates\"). Do NOT use \"I\", \"we\", \"you\", \"let's\", or \"the instructor\".
+- **Zero Promotional Content:** Remove any channel promotions, subscribe requests, or off-topic personal remarks.
 
 Extracted Knowledge:
 {json.dumps(extracted_knowledge, indent=2)}
@@ -577,22 +674,22 @@ Extracted Knowledge:
 Return ONLY a JSON object with this exact structure (no markdown wrapper, no other text):
 {{
   "concept": "{topic_title}",
-  "definition": "Formal definition of the concept",
-  "explanation": "Detailed explanation of the concept's core principles",
-  "analogy": "Memorable real-world analogy",
-  "examples": ["Example 1", "Example 2"],
-  "procedures": ["Step 1", "Step 2"],
-  "misconceptions": ["Misconception 1", "Misconception 2"],
-  "applications": ["Application 1", "Application 2"],
-  "commands": ["command 1", "command 2"],
-  "formulas": ["formula 1"],
-  "warnings": ["warning/pitfall 1"],
-  "best_practices": ["best practice 1"],
-  "interview_questions": ["Question 1", "Question 2"],
-  "keywords": ["Keyword1", "Keyword2"],
-  "code": ["code block 1"],
-  "output": ["output 1"],
-  "summary": "1-2 sentence high-level summary"
+  "definition": "A formal, precise 1-2 sentence textbook definition of the concept — what it IS and what it does.",
+  "explanation": "A cohesive, multi-sentence paragraph (4-8 sentences) explaining the concept's core principles, how it works, and why it matters — following the instructor's logical flow. Connect ideas with transitional language. This should read like a polished lecture note, not a list of facts.",
+  "analogy": "A memorable real-world analogy that the instructor used or that clearly illustrates the concept. Leave empty string if none.",
+  "examples": ["Specific concrete example 1 from the transcript", "Specific concrete example 2"],
+  "procedures": ["Step 1: specific action", "Step 2: specific action"],
+  "misconceptions": ["Common misconception 1 about this concept"],
+  "applications": ["Real-world application or use case 1", "Application 2"],
+  "commands": ["exact terminal command 1", "exact terminal command 2"],
+  "formulas": ["formula or equation if any"],
+  "warnings": ["Specific warning or common mistake 1"],
+  "best_practices": ["Best practice or key takeaway 1"],
+  "interview_questions": ["A specific interview question on this concept?", "Another relevant question?"],
+  "keywords": ["KeyTerm1", "KeyTerm2", "KeyTerm3"],
+  "code": ["actual code snippet if present"],
+  "output": ["expected output if mentioned"],
+  "summary": "2-3 sentences capturing what this topic teaches and why it is important for learners — based only on the actual content."
 }}"""
 
     if gemini_key:
@@ -675,7 +772,10 @@ def llama_metadata_router(text: str, gemini_key: str = None, ollama_url: str = N
     and identify its primary language/framework and confidence score.
     Returns: { "is_technical": bool, "primary_language_or_framework": str, "confidence_score": float }
     """
-    prompt = f"""You are a semantic routing engine. Analyze this transcript segment and categorize its structural payload.
+    prompt = f"""You are
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+ a semantic routing engine. Analyze this transcript segment and categorize its structural payload.
     
     Transcript:
     {text[:3000]}
@@ -767,7 +867,10 @@ def _call_llm_banter_prompt(topic_title: str, cleaned_text: str, topic_index: in
     Simpler prompt layout designed specifically for empty or banter/introductory segments.
     Strictly yields N/A for code/procedural blocks.
     """
-    prompt = f"""# Role and Objective
+    prompt = f"""# Role
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+ and Objective
 You are an adaptive educational parsing engine. Your job is to extract technical training notes from a raw transcript.
 
 # Strict Truthfulness Rules
@@ -852,20 +955,34 @@ def _call_ollama_raw(prompt: str, ollama_url: str, json_mode: bool = False) -> s
 
 def _call_llm_three_pass(topic_title: str, cleaned_text: str, topic_index: int, gemini_key: str = None, ollama_url: str = None):
     # Step 1: Cleaning Agent
-    cleaning_prompt = f"""You are a transcript cleaning assistant.
-Your job is to clean this transcript section for educational study notes.
-- Remove YouTube filler words, announcements, sponsor slots, subscribe requests, greetings (e.g., "Hello everyone", "Welcome back", "Subscribe to the channel").
-- Remove conversational filler words and spoken narration (e.g., "okay", "uh", "all right", "you know", "let's see", "one second", "now let's go here", "let's start", "I am going to").
-- Convert spoken conversational cues to clean declarative instructions.
-  Example: "okay so now let's go to urls.py" -> "Go to urls.py."
-- Keep ONLY clean educational facts, concepts, explanations, and instructions.
-- Convert all first-person speech ("I", "me", "my", "we", "us", "our", "let's") or second-person speech ("you") to objective, third-person statements.
+    cleaning_prompt = f"""You are a precise transcript cleaning assistant.
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+
+Your job is to clean this lecture transcript section for educational study notes.
+
+REMOVE ONLY (promotional/noise content):
+- Channel promotions, greetings and sign-offs (e.g., "Hello everyone", "Welcome back", "Subscribe to the channel", "Hit the bell icon", "Thanks for watching")
+- Sponsor slots and self-promotional pitches
+- Pure vocal hesitation sounds: "um", "uh", "hmm", "er" (only when isolated)
+- Stutter repetitions (e.g., "the the the" → "the")
+- Off-topic personal conversation unrelated to the subject
+
+PRESERVE EVERYTHING ELSE:
+- ALL technical explanations, definitions, and concepts — keep them fully intact
+- ALL examples, analogies, and comparisons the instructor gives — do not shorten
+- ALL reasoning chains and "why" explanations — these are critical for learning
+- Transition phrases like "so", "now", "basically", "essentially", "right" — these signal teaching flow
+- Step-by-step walkthroughs and code explanations
+- Convert first-person speech ("I", "we", "let's") to objective third-person ONLY when it is a direct action instruction.
+  Example: "okay so now let's go to urls.py" → "Navigate to urls.py."
+  Do NOT convert explanatory sentences like "So what I'm saying is..." — preserve their meaning instead.
 
 Topic: {topic_title}
 Transcript chunk:
 {cleaned_text[:3500]}
 
-Return ONLY the cleaned educational text, maintaining the factual information without conversational fillers or spoken narration. Do not include markdown formatting or warnings."""
+Return ONLY the cleaned educational text. Preserve the full depth and richness of the explanations. Do not summarize. Do not shorten explanations. Do not include markdown formatting or warnings."""
 
     if gemini_key:
         raw_cleaned = _call_gemini_raw(cleaning_prompt, gemini_key, json_mode=False)
@@ -879,7 +996,10 @@ Return ONLY the cleaned educational text, maintaining the factual information wi
         raw_cleaned = cleaned_text
 
     # Step 2: Knowledge Extraction Agent
-    extraction_prompt = f"""You are an educational knowledge extraction engine.
+    extraction_prompt = f"""You are
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+ an educational knowledge extraction engine.
 Your task is to convert this free-form educational text into structured concepts and facts.
 Do NOT summarize yet. Just extract the facts and entities as they are described.
 Do NOT assume or invent any facts or patterns not explicitly present in the text.
@@ -925,7 +1045,10 @@ Return ONLY a JSON object with this exact structure (no markdown wrapper, no oth
         return None
 
     # Step 3: Teacher Agent
-    teacher_prompt = f"""# Role and Objective
+    teacher_prompt = f"""# Role
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+ and Objective
 You are the AI engine behind a premium educational platform's study-guide feature. Your goal is to convert messy, raw lecture transcripts (represented here as structured knowledge units) into perfectly structured, textbook-quality "Detailed Notes".
 
 # Strict Truthfulness Rules
@@ -966,7 +1089,7 @@ Return ONLY a JSON object with this exact structure (no markdown wrapper, no oth
 {{
   "detailed": {{
     "summary": "2-3 educational sentences explaining what this topic teaches",
-    "markdown": "A comprehensive, highly detailed textbook-quality study guide in Markdown format. Follow these strict rules:\n- **Third-Person Objective Voice Only:** Never use 'I', 'me', 'my', 'you', 'we', 'us', or 'the instructor'. Rewrite all actions objectively.\n- **Zero Transcript Leakage:** Never copy raw conversational stumbles, self-promotional pitches, or broken sentences verbatim.\n- **High-Density Technical Rephrasing:** Turn messy spoken walkthroughs into polished, professional prose.\n- **Format Structure:**\n   1. Do NOT use rigid generic headers (like '📘 Segment Synthesis', 'Technical Procedures & Commands', 'Code & Terminal Commands'). Instead, use organic, concept-based headings (e.g. `### OOP Encapsulation` or `### Client-Server Request Cycle` or `### Commands & Setup`).\n   2. All explanatory text, concepts, steps, and procedures MUST be structured as clean, detailed, high-density bullet points (`-` or `*`).\n   3. Do NOT use numbered lists. Use bullet points for all sequential operations or setup steps.\n   4. Do NOT prefix bullet points with rigid template bold headers like `**Core Focus:**`, `**Context & Purpose:**`, or `**[Topic Title]:**`. Simply present direct, clear, professional sentences as bullet points.\n   5. If code blocks or terminal commands are mentioned, include them directly under the relevant descriptive headings using markdown fenced code blocks (e.g. ` ```bash ` or ` ```python `). If no code or commands are present, do NOT include any code block or 'N/A' placeholders.\n   6. The only standard section at the end is `### 🧠 Concept Check & Review` where you generate 2-3 high-quality academic review questions based strictly on the technical content (e.g., Question 1: [question], Question 2: [question]).",
+    "markdown": "A comprehensive, highly detailed textbook-quality study guide in Markdown format. Follow these STRICT rules:\n- **Third-Person Objective Voice Only:** Never use 'I', 'me', 'my', 'you', 'we', 'us', or 'the instructor'. Rewrite all actions objectively.\n- **Zero Transcript Leakage:** Never copy raw conversational stumbles, self-promotional pitches, or broken sentences verbatim.\n- **High-Density Technical Rephrasing:** Turn messy spoken walkthroughs into polished, professional prose.\n- **CRITICAL — Code Fence Rule:** ONLY add markdown fenced code blocks (e.g. ```python or ```bash) if the transcript contains ACTUAL executable source code with programming syntax (e.g. def, class, import, function declarations, for loops, shell commands). Do NOT wrap explanatory descriptions, conceptual explanations, or sentences that merely MENTION a language name (e.g. 'Python uses classes') inside code fences. If no real code exists, do NOT include any code block at all.\n- **Format Structure:**\n   1. Do NOT use rigid generic headers (like '📘 Segment Synthesis', 'Technical Procedures & Commands', 'Code & Terminal Commands'). Instead, use organic, concept-based headings (e.g. `### OOP Encapsulation` or `### Client-Server Request Cycle`).\n   2. All explanatory text, concepts, steps, and procedures MUST be structured as clean, detailed bullet points (`-` or `*`).\n   3. Do NOT use numbered lists. Use bullet points for all sequential operations or setup steps.\n   4. Do NOT prefix bullet points with rigid template bold headers like `**Core Focus:**` or `**Context & Purpose:**`. Simply present direct, clear sentences as bullet points.\n   5. The only standard section at the end is `### 🧠 Concept Check & Review` where you generate 2-3 high-quality academic review questions (e.g., Question 1: [question]).",
     "sections": [
       {{
         "title": "Section Title",
@@ -1062,16 +1185,20 @@ def _parse_llm(raw: str, topic_title: str, topic_index: int):
             if not key_points and sections:
                 key_points = sections[0].get("content", [])
 
+            # Sanitize the LLM-generated markdown to strip false-positive code blocks
+            raw_md = detailed.get("markdown", "")
+            clean_md = sanitize_markdown_code_blocks(raw_md)
+
             return {
                 "topic": topic_title,
                 "topic_index": topic_index,
                 "summary": summary,
                 "key_points": key_points,
                 "important_terms": detailed.get("important_terms", []),
-                "markdown": detailed.get("markdown", ""),
+                "markdown": clean_md,
                 "detailed": {
                     "summary": summary,
-                    "markdown": detailed.get("markdown", ""),
+                    "markdown": clean_md,
                     "what_is_it": what_is_it or summary,
                     "why_matters": why_matters,
                     "how_it_works": how_it_works,

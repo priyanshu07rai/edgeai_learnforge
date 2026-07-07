@@ -13,6 +13,7 @@ import os
 import json
 import requests
 import re
+import tempfile
 from dotenv import load_dotenv
 from ollama_health import check_ollama_available
 from translator import translate_to_english, detect_language, make_cache_path
@@ -108,14 +109,27 @@ def generate_flashcards_for_video(video_id: str, storage_dir: str, ollama_url: s
         })
 
     result = {"topics": cards_topics}
-    with open(cards_path, "w", encoding='utf-8') as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
+    
+    # Atomic write to prevent race conditions
+    dir_name = os.path.dirname(cards_path)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.json')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, cards_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+            
     print(f"[LearnForge Flashcards] Saved flashcards.json for {video_id}.")
     return result
 
 
 def _call_ollama_for_cards(topic_title: str, notes_markdown: str, ollama_url: str):
-    prompt = f"""You are an expert educator.
+    prompt = f"""You are
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+ an expert educator.
 Your task is to generate 8-10 flashcard Q&A pairs based strictly on the provided study notes.
 
 Rules:
@@ -170,17 +184,41 @@ def _parse_cards_json(raw: str):
 # ── Per-topic generation ─────────────────────────────────────────────────
 
 def _generate_cards_llm(topic_title: str, knowledge: dict, gemini_key: str = None, ollama_url: str = None):
-    prompt = f"""You are an educational study assistant.
-Generate 8-10 concept-based Q&A flashcards using ONLY the structured Knowledge Layer JSON below. Do NOT use conversational filler.
-Format each flashcard to target core concepts, definitions, procedures, best practices, and warnings from the knowledge structure. All questions and answers must be in English.
-Strict Voice Rules: Use Third-Person Objective Voice Only (never use "I", "my", "we", "us", "our", "you", or conversational tokens in questions or answers).
+    prompt = f"""You are a senior educational content specialist creating active-recall flashcards.
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+
+Your task: Generate 6-8 HIGH-QUALITY concept-focused flashcards for the topic "{topic_title}" using ONLY facts from the Knowledge Layer JSON below.
+
+# Flashcard Quality Rules
+1. FORBIDDEN question types: "What is the definition of..." or "What does X mean?" — these are shallow.
+2. REQUIRED question depth — use these question patterns:
+   - "Why does [concept] work this way?"
+   - "What is the key difference between X and Y?"
+   - "In what scenario would you use [concept]?"
+   - "What happens if [condition] is not met?"
+   - "How does [concept] achieve [outcome]?"
+   - "What is the most common mistake when working with [concept]?"
+   - "What is the practical significance of [concept]?"
+3. Each card must teach ONE clear idea — no compound questions.
+4. AVOID duplicate or near-duplicate cards covering the same fact.
+5. Prioritize: conceptual reasoning > applications > warnings > procedures.
+6. Every card must have a 'type' field (one of: "conceptual", "application", "misconception", "insight").
+7. Every card must have a 'hint' field — a single short sentence that nudges toward the answer without giving it away.
+
+# Voice Rules
+- Use Third-Person Objective Voice Only.
+- Never use "I", "my", "we", "us", "our", "you", or "let's".
 
 Topic: {topic_title}
 Knowledge:
 {json.dumps(knowledge, indent=2)}
 
 Return ONLY valid JSON (no markdown wrapper, no other text):
-{{"cards": [{{"question": "...", "answer": "..."}}]}}"""
+{{"cards": [
+  {{"question": "...", "answer": "...", "type": "conceptual", "hint": "Think about the core purpose..."}},
+  {{"question": "...", "answer": "...", "type": "application", "hint": "Consider a real-world use case..."}}
+]}}"""
 
     raw = ""
     if gemini_key:
@@ -201,7 +239,7 @@ Return ONLY valid JSON (no markdown wrapper, no other text):
             resp = requests.post(
                 ollama_url,
                 json={"model": MODEL, "prompt": prompt, "stream": False, "format": "json"},
-                timeout=35,
+                timeout=40,
             )
             if resp.status_code == 200:
                 raw = resp.json().get("response", "").strip()
@@ -214,69 +252,129 @@ Return ONLY valid JSON (no markdown wrapper, no other text):
 
 
 def _build_cards_heuristic(knowledge: dict, topic_title: str) -> list:
+    """Build typed, concept-rich flashcards from knowledge fields without an LLM."""
     cards = []
-    
-    # 1. Definition card
+
+    # 1. Why/How the concept works — from explanation
+    explanation = knowledge.get("explanation", "")
+    if explanation and len(explanation) > 30:
+        # Take the most informative sentence as the core reasoning card
+        sents = [s.strip() for s in re.split(r'(?<=[.!?])\s+', explanation) if len(s.strip()) > 20]
+        if sents:
+            cards.append({
+                "question": f"How does {topic_title} work, and why is it designed that way?",
+                "answer": sents[0] if len(sents) == 1 else " ".join(sents[:3]),
+                "type": "conceptual",
+                "hint": "Think about the core mechanism and purpose."
+            })
+
+    # 2. Definition — one card, reframed as a reasoning question
     definition = knowledge.get("definition", "")
     if definition:
         cards.append({
-            "question": f"What is the definition of {topic_title}?",
-            "answer": definition
+            "question": f"What is {topic_title} and what problem does it solve?",
+            "answer": definition,
+            "type": "conceptual",
+            "hint": "Focus on its role and the problem it addresses."
         })
-        
-    # 2. Analogy card
+
+    # 3. Application card — from applications list
+    applications = knowledge.get("applications", [])
+    for app in applications[:2]:
+        if app and len(app) > 15:
+            cards.append({
+                "question": f"In what real-world scenario is {topic_title} most useful?",
+                "answer": app,
+                "type": "application",
+                "hint": "Think about a concrete use case or industry context."
+            })
+            break  # one application card is enough
+
+    # 4. Analogy card
     analogy = knowledge.get("analogy", "")
     if analogy:
         cards.append({
-            "question": f"What is a helpful analogy for understanding {topic_title}?",
-            "answer": analogy
+            "question": f"What real-world analogy best illustrates how {topic_title} works?",
+            "answer": analogy,
+            "type": "insight",
+            "hint": "Think about an everyday object or system with similar behavior."
         })
-        
-    # 3. Warning/Pitfall card
-    warnings = knowledge.get("warnings", [])
-    for w in warnings[:2]:
-        if w:
+
+    # 5. Misconception card
+    misconceptions = knowledge.get("misconceptions", [])
+    for m in misconceptions[:1]:
+        if m:
             cards.append({
-                "question": f"What is a common mistake or pitfall to avoid regarding {topic_title}?",
-                "answer": w
-            })
-            
-    # 4. Best practices card
-    best_practices = knowledge.get("best_practices", [])
-    for bp in best_practices[:2]:
-        if bp:
-            cards.append({
-                "question": f"What is an important best practice for working with {topic_title}?",
-                "answer": bp
+                "question": f"What is a common misconception about {topic_title}?",
+                "answer": m,
+                "type": "misconception",
+                "hint": "Think about what people often assume incorrectly."
             })
 
-    # 5. Procedures/Steps card
-    procedures = knowledge.get("procedures", [])
-    if procedures:
-        steps_str = "\n".join(f"- {step}" for step in procedures[:5])
-        cards.append({
-            "question": f"What are the implementation steps for {topic_title}?",
-            "answer": steps_str
-        })
-        
-    # 6. Examples card
-    examples = knowledge.get("examples", [])
-    for ex in examples[:2]:
-        if ex:
+    # 6. Warning/Pitfall card
+    warnings = knowledge.get("warnings", [])
+    for w in warnings[:1]:
+        if w:
             cards.append({
-                "question": f"What is a practical example of {topic_title}?",
-                "answer": ex
+                "question": f"What critical mistake should be avoided when working with {topic_title}?",
+                "answer": w,
+                "type": "misconception",
+                "hint": "Think about a step that is easy to skip but causes problems."
             })
-            
+
+    # 7. Best practice card
+    best_practices = knowledge.get("best_practices", [])
+    for bp in best_practices[:1]:
+        if bp:
+            cards.append({
+                "question": f"What is the most important best practice to follow with {topic_title}?",
+                "answer": bp,
+                "type": "insight",
+                "hint": "Think about what experienced practitioners always do."
+            })
+
+    # 8. Steps card — procedural
+    procedures = knowledge.get("procedures", [])
+    if len(procedures) >= 2:
+        steps_str = " → ".join(p.strip().rstrip('.') for p in procedures[:5])
+        cards.append({
+            "question": f"What are the key steps involved in implementing {topic_title}?",
+            "answer": steps_str,
+            "type": "application",
+            "hint": "Think about the sequence of actions required."
+        })
+
+    # 9. Example card
+    examples = knowledge.get("examples", [])
+    for ex in examples[:1]:
+        if ex and len(ex) > 15:
+            cards.append({
+                "question": f"What is a practical example that demonstrates {topic_title}?",
+                "answer": ex,
+                "type": "application",
+                "hint": "Think about a specific scenario or code example from the lecture."
+            })
+
     # Fallback
     if not cards:
         summary = knowledge.get("summary", f"This topic covers the key concepts of {topic_title}.")
         cards.append({
-            "question": f"What is the core focus of {topic_title}?",
-            "answer": summary
+            "question": f"What is the core significance of {topic_title}?",
+            "answer": summary,
+            "type": "conceptual",
+            "hint": "Think about why this concept matters in practice."
         })
-        
-    return cards
+
+    # Deduplicate by question similarity
+    seen_q = set()
+    deduped = []
+    for card in cards:
+        q_key = re.sub(r'[^a-z0-9]', '', card['question'].lower())[:60]
+        if q_key not in seen_q:
+            seen_q.add(q_key)
+            deduped.append(card)
+
+    return deduped
 
 
 def generate_flashcards_for_single_topic(
@@ -347,7 +445,15 @@ def generate_flashcards_for_single_topic(
         "cards": card_data.get("cards", []) if card_data else [],
     }
 
-    with open(cache_path, "w", encoding='utf-8') as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
+    # Atomic thread-safe cache write
+    dir_name = os.path.dirname(cache_path)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.json')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, cache_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
     return result

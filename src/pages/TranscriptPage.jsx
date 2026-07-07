@@ -8,7 +8,8 @@ import TopicDropdown from '../components/TopicDropdown';
 import TopicProcessor from '../components/TopicProcessor';
 import DebugViewer from '../components/DebugViewer';
 import FloatingAI from '../components/FloatingAI';
-import { fetchTranscript, processVideo, generateNotesForTopic, generateFlashcardsForTopic, generateQuizForTopic, fetchOverallSummary } from '../services/api';
+// Using native HTML5 <video> — no library needed
+import { fetchTranscript, processVideo, generateNotesForTopic, generateFlashcardsForTopic, generateQuizForTopic, fetchOverallSummary, getVideoUrl } from '../services/api';
 import { saveSession } from './DashboardPage';
 
 const PRELOAD_AHEAD = 2;
@@ -42,6 +43,28 @@ export default function TranscriptPage() {
   const reqQuiz = useRef(new Set());
 
   const [showDebug, setShowDebug] = useState(false);
+
+  // ── Video Syncing ──────────────────────────────────────────────────────────
+  const videoRef = useRef(null);      // native <video> element
+  const videoWrapperRef = useRef(null);
+  const [localVideoUrl, setLocalVideoUrl] = useState(null); // blob URL for instant preview
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => { if (localVideoUrl) URL.revokeObjectURL(localVideoUrl); };
+  }, [localVideoUrl]);
+
+  const handlePlayVideo = useCallback((timeSecs) => {
+    if (videoWrapperRef.current) {
+      const y = videoWrapperRef.current.getBoundingClientRect().top + window.scrollY - 20;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    }
+    const vid = videoRef.current;
+    if (vid) {
+      vid.currentTime = timeSecs;
+      vid.play().catch(() => {});   // catch autoplay-policy block silently
+    }
+  }, []);
 
   // ── Live transcription progress (polls backend while Whisper runs) ──────────
   const [transcriptProgress, setTranscriptProgress] = useState(null); // { segments, audio_pos }
@@ -179,8 +202,14 @@ export default function TranscriptPage() {
 
   const handleSubmit = async (params) => {
     resetAll();
+    setLocalVideoUrl(null);  // clear any old blob
     if (params.errorOverride) { setError(params.errorOverride); return; }
     if (params.triggerValidationOnly) { setError('Unsupported file.'); return; }
+
+    // Instantly create a blob URL so the video player shows while processing
+    if (params.file) {
+      setLocalVideoUrl(URL.createObjectURL(params.file));
+    }
 
     // Pre-generate a video_id for MP4 uploads so progress polling starts immediately
     const preVideoId = params.file
@@ -256,6 +285,34 @@ export default function TranscriptPage() {
           onClearError={() => setError(null)}
         />
 
+        {/* ── Persistent Video Player ─────────────────────────────────────────
+             Rendered once when user picks a file or loads an existing session.
+             Starts with blob URL instantly. Falls back to backend video URL.
+             YouTube videos use an iframe instead.                               */}
+        {(localVideoUrl || transcriptData?.youtube_video_id || (videoId && !transcriptData?.youtube_video_id)) && (
+          <div
+            ref={videoWrapperRef}
+            className="w-full max-w-3xl mx-auto bg-black rounded-xl overflow-hidden border border-[#2a2a2a] shadow-lg flex justify-center transition-all mb-4"
+          >
+            {transcriptData?.youtube_video_id ? (
+              <iframe
+                src={`https://www.youtube.com/embed/${transcriptData.youtube_video_id}?enablejsapi=1`}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                style={{ width: '100%', aspectRatio: '16/9', border: 'none' }}
+              />
+            ) : (
+              <video
+                ref={videoRef}
+                src={localVideoUrl || (videoId ? getVideoUrl(videoId) : '')}
+                controls
+                preload="metadata"
+                style={{ width: '100%', display: 'block', background: '#000' }}
+              />
+            )}
+          </div>
+        )}
+
         {isProcessingTranscript && <LoadingState phase="transcript" progress={transcriptProgress} />}
         {isProcessingTopics && <LoadingState phase="topics" />}
         {/* TopicProcessor only for error display */}
@@ -263,7 +320,7 @@ export default function TranscriptPage() {
 
         {/* Main study panel */}
         {!isProcessingTranscript && !isProcessingTopics && transcriptData && (
-          <div className="w-full flex flex-col gap-4">
+          <div className="w-full flex flex-col gap-6">
 
             {/* Toolbar */}
             <div className="flex items-center justify-end gap-2">
@@ -336,6 +393,8 @@ export default function TranscriptPage() {
                   overallSummary={overallSummary}
                   isLoadingSummary={isLoadingSummary}
                   onTopicClick={setActiveTopicIdx}
+                  transcriptData={transcriptData}
+                  onPlayVideo={handlePlayVideo}
                 />
               </div>
             </div>

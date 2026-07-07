@@ -258,5 +258,20 @@ export const fetchOverallSummary = async (videoId) => {
   return response.data;
 };
 
+/**
+ * Generate/fetch knowledge graph for ONE specific topic.
+ * @param {string} videoId
+ * @param {number} topicIndex
+ * @returns {Promise<{main_topic, is_structural, explanation, subtopics, examples, key_takeaways, flowchart_steps, related_topics}>}
+ */
+export const fetchGraphForTopic = async (videoId, topicIndex) => {
+  const response = await apiClient.get(`/graph/${videoId}/${topicIndex}`);
+  return response.data;
+};
 
-
+/**
+ * Returns the URL for streaming the saved video MP4.
+ * @param {string} videoId 
+ * @returns {string}
+ */
+export const getVideoUrl = (videoId) => `${API_BASE_URL}/video/${videoId}/stream.mp4`;

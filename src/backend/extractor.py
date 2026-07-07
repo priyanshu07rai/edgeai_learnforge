@@ -559,7 +559,14 @@ def extract_knowledge_units(text: str, topic_title: str, corpus: List[str] = Non
             
             # 1. Regex checks for specialized knowledge types
             is_cmd = any(cmd in s_low for cmd in ["pip install", "python manage.py", "django-admin", "source env", "npm run", "git clone", "git push", "git commit", "docker run", "docker-compose"])
-            is_code = any(c in s_low for c in ["def ", "class ", "import ", "const ", "let ", "function ", "return ", "if ", "for ", "while "]) or "```" in sub_sent
+            # Strict code detection: require actual code syntax markers, not just English words
+            # Disqualify plain English sentences that happen to contain these words
+            _has_code_fence = "```" in sub_sent
+            _has_code_assignment = bool(re.search(r'\b\w+\s*=\s*[\w"\[{(]', sub_sent))  # x = value
+            _has_code_call = bool(re.search(r'\b\w+\(.*\)', sub_sent))  # function(...)
+            _has_code_keyword = bool(re.search(r'\b(def |class |import |from \w+ import|const |let |var |function |return |elif |else:|except:|lambda |yield |async |await )\b', sub_sent))
+            _has_indent = sub_sent.startswith(("    ", "\t"))  # indented code
+            is_code = (_has_code_fence or _has_code_keyword or (_has_code_assignment and _has_code_call) or _has_indent) and not is_cmd
             is_warning = any(w in s_low for w in ["warning", "error", "mistake", "fail", "wrong", "pitfall", "gotcha"])
             is_best_practice = any(bp in s_low for bp in ["best practice", "should", "always", "never", "must"])
             is_formula = any(form in s_low for form in ["formula", "equation", "calculate", "=", "+", "*", "/"]) and any(char.isdigit() for char in sub_sent)
@@ -1004,9 +1011,17 @@ def build_notes_from_knowledge(knowledge: Dict, topic_title: str) -> Dict:
         
     if explanation:
         md_lines.append(f"### Core Concepts & Explanation\n")
-        for s in re.split(r'(?<=[.!?])\s+', explanation):
-            if s.strip():
-                md_lines.append(f"- {s.strip()}")
+        # Render explanation as a cohesive paragraph, not disconnected bullets.
+        # Split into sentences only to clean up whitespace, then re-join as flowing text.
+        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', explanation) if s.strip()]
+        if len(sentences) <= 2:
+            # Short explanation: render as a single paragraph
+            md_lines.append(explanation.strip() + "\n")
+        else:
+            # Multi-sentence: render as a paragraph with the first sentence
+            # as a topic opener, then the rest as a flowing continuation.
+            paragraph = " ".join(sentences)
+            md_lines.append(paragraph + "\n")
         md_lines.append("")
         
     if analogy:
@@ -1037,17 +1052,35 @@ def build_notes_from_knowledge(knowledge: Dict, topic_title: str) -> Dict:
             md_lines.append(f"- {e}")
         md_lines.append("")
 
-    # Code snippets
+    # Code snippets — only wrap in fenced code block if the snippet looks like actual code
     if code:
-        md_lines.append("### Code Implementation\n")
-        for snippet in code:
-            if not snippet.strip().startswith("```"):
-                md_lines.append("```python")
-                md_lines.append(snippet.strip())
-                md_lines.append("```\n")
-            else:
-                md_lines.append(snippet.strip() + "\n")
-                
+        _code_fence_re = re.compile(r'(def |class |import |from \w+ import|const |let |return |lambda |yield |async |await |elif |else:|except:)', re.I)
+        _actual_code = [s for s in code if _code_fence_re.search(s) or s.strip().startswith('```')]
+        _prose_code = [s for s in code if s not in _actual_code]
+
+        # Render actual code snippets inside fenced blocks
+        if _actual_code:
+            md_lines.append("### Code Implementation\n")
+            for snippet in _actual_code:
+                if not snippet.strip().startswith("```"):
+                    # Choose language tag based on content
+                    lang = "python"
+                    if any(t in snippet for t in ["const ", "let ", "function ", "=>", "document.", "console."]):
+                        lang = "javascript"
+                    elif any(t in snippet for t in ["<", ">", "html", "div", "span"]):
+                        lang = "html"
+                    md_lines.append(f"```{lang}")
+                    md_lines.append(snippet.strip())
+                    md_lines.append("```\n")
+                else:
+                    md_lines.append(snippet.strip() + "\n")
+
+        # Misclassified prose — render as bullet points instead
+        if _prose_code:
+            for snippet in _prose_code:
+                md_lines.append(f"- {snippet.strip()}")
+            md_lines.append("")
+
     # Terminal Commands
     if commands:
         md_lines.append("### Terminal Setup & Commands\n")

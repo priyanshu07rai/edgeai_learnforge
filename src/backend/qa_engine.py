@@ -1,4 +1,4 @@
-"""
+﻿"""
 qa_engine.py — Redesigned educational tutor Q&A engine.
 Supports four modes: transcript, teacher (default), knowledge, hybrid.
 Detects user intent (Comparison, Analogy, Code, Procedure, Definition).
@@ -113,7 +113,10 @@ def _find_timestamp_for_chunk(chunk_text: str, segments: list) -> str:
 
 
 def _build_prompt(question: str, context: str, mode: str, intent: str) -> str:
-    prompt = f"""You are an advanced agentic AI educational tutor. Your goal is to explain concepts clearly, accurately, and educationally.
+    prompt = f"""You are
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+ an advanced agentic AI educational tutor. Your goal is to explain concepts clearly, accurately, and educationally.
 You must always structure your response using these three section headers exactly. Do not omit any header. Do NOT output a '### 📖 Sources' header as it will be appended automatically.
 
 ### 🧠 General Explanation

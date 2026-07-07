@@ -13,6 +13,8 @@ import os
 import json
 import requests
 import re
+import tempfile
+import random
 from dotenv import load_dotenv
 from ollama_health import check_ollama_available
 from translator import translate_to_english, detect_language, make_cache_path
@@ -126,14 +128,27 @@ def generate_quiz_for_video(video_id: str, storage_dir: str, ollama_url: str = O
         quiz_topics.append({"topic": topic_title, "quiz": questions})
 
     result = {"topics": quiz_topics}
-    with open(quiz_path, "w", encoding='utf-8') as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
+    
+    # Atomic write to prevent race conditions
+    dir_name = os.path.dirname(quiz_path)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.json')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, quiz_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+            
     print(f"[LearnForge Quiz] Saved quiz.json for {video_id}.")
     return result
 
 
 def _call_ollama_for_quiz(topic_title: str, notes_markdown: str, ollama_url: str):
-    prompt = f"""Create 5 MCQs based strictly on the provided study notes.
+    prompt = f"""Create 5 MCQs
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+ based strictly on the provided study notes.
 
 Rules:
 - **Third-Person Objective Voice Only:** Never use first-person speech ("I", "my", "we", "our", "us") or second-person speech ("you"). Keep all questions, options, and explanations objective.
@@ -189,19 +204,82 @@ def _parse_quiz_json(raw: str):
                     "explanation": q.get("explanation", ""),
                 })
             if valid:
-                return valid
+                return _randomize_quiz_options(valid)
         except Exception:
             continue
     return None
+
+def _randomize_quiz_options(quiz_list: list) -> list:
+    """Randomizes the options for each question and correctly remaps the correct_answer."""
+    for q in quiz_list:
+        opts = q.get("options", [])
+        if not opts or len(opts) < 2:
+            continue
+            
+        correct = str(q.get("correct_answer", "A")).strip()
+        
+        # 1. Determine the index of the current correct answer
+        correct_idx = 0
+        match = re.match(r'^([A-D])\b', correct, re.IGNORECASE)
+        if match:
+            # Case 1: "A" or "A)" or "a"
+            correct_idx = ord(match.group(1).upper()) - ord('A')
+        else:
+            # Case 2: Full string match
+            for i, opt in enumerate(opts):
+                if correct.lower() in opt.lower():
+                    correct_idx = i
+                    break
+                    
+        correct_idx = min(max(correct_idx, 0), len(opts) - 1)
+        
+        # 2. Strip prefixes and extract the pure text of options
+        clean_opts = [re.sub(r'^([A-D][\.\)]\s*)', '', opt, flags=re.IGNORECASE).strip() for opt in opts]
+        correct_text = clean_opts[correct_idx]
+        
+        # 3. Shuffle the pure text options
+        random.shuffle(clean_opts)
+        
+        # 4. Re-map the correct answer to its new index
+        new_correct_idx = clean_opts.index(correct_text)
+        new_correct_letter = chr(ord('A') + new_correct_idx)
+        
+        # 5. Re-apply the A/B/C/D prefixes to the shuffled options
+        formatted_opts = [f"{chr(ord('A') + i)}) {opt}" for i, opt in enumerate(clean_opts)]
+        
+        # 6. Update the question object
+        q["options"] = formatted_opts
+        q["correct_answer"] = new_correct_letter
+        
+    return quiz_list
 
 
 # ── Per-topic generation ─────────────────────────────────────────────────
 
 def _generate_quiz_llm(topic_title: str, knowledge: dict, gemini_key: str = None, ollama_url: str = None):
-    prompt = f"""You are an educational study assistant.
-Generate 5 MCQ questions using ONLY the structured Knowledge Layer JSON below. Do NOT use conversational filler.
-Strict Voice Rules: Use Third-Person Objective Voice Only (never use "I", "my", "we", "us", "our", "you", or conversational tokens in questions, options, or explanations).
-Every question must have 4 distinct options (labeled A, B, C, D), a correct_answer (e.g. "A"), and a brief explanation. All text must be in English.
+    prompt = f"""You are a senior educational assessment designer creating high-quality multiple-choice questions.
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+
+Your task: Generate 5 HIGH-QUALITY, reasoning-based MCQs for the topic "{topic_title}" using ONLY facts from the Knowledge Layer JSON below.
+
+# Quiz Quality Rules
+1. FORBIDDEN question types: "What is the definition of..." or "Which of the following means..." — these are too shallow.
+2. REQUIRED question depth — test application and reasoning:
+   - "In which scenario would you use [concept] instead of [alternative]?"
+   - "What is the expected outcome if [action/step] is performed?"
+   - "Why is [best practice] recommended for [concept]?"
+   - "What underlying problem does [concept] solve?"
+3. Distractor Quality (Wrong Options):
+   - Options must be highly believable.
+   - Use common misconceptions or plausible but incorrect technical assumptions.
+   - DO NOT use obvious filler or silly options.
+4. Explanations MUST be educational. They should explain *why* the correct answer is right AND *why* the distractors are wrong based on the concept's principles.
+5. Provide exactly 4 options labeled A, B, C, D.
+
+# Voice Rules
+- Use Third-Person Objective Voice Only.
+- Never use "I", "my", "we", "us", "our", "you".
 
 Topic: {topic_title}
 Knowledge:
@@ -209,6 +287,7 @@ Knowledge:
 
 Return ONLY valid JSON (no markdown wrapper, no other text):
 {{"quiz": [{{"question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct_answer": "A", "explanation": "..."}}]}}"""
+
 
     raw = ""
     if gemini_key:
@@ -242,21 +321,22 @@ Return ONLY valid JSON (no markdown wrapper, no other text):
 
 
 def _build_quiz_heuristic(knowledge: dict, topic_title: str) -> list:
+    """Build reasoning-based MCQs from knowledge fields without an LLM."""
     quiz = []
     
-    # 1. Definition question
-    definition = knowledge.get("definition", "")
-    if definition:
+    # 1. Reasoning/Purpose question (from explanation)
+    explanation = knowledge.get("explanation", "")
+    if explanation:
         quiz.append({
-            "question": f"Which of the following best defines the concept of {topic_title}?",
+            "question": f"What is the primary underlying purpose or mechanism of {topic_title}?",
             "options": [
-                f"A) {definition}",
-                "B) It is an obsolete framework with no modern usage.",
-                "C) It refers to the design system styling layer.",
-                "D) None of the above."
+                f"A) {explanation[:120].strip()}...",
+                "B) It serves as a legacy fallback system with no active use.",
+                "C) It replaces all external dependencies with a single binary.",
+                "D) It only handles UI rendering without affecting logic."
             ],
             "correct_answer": "A",
-            "explanation": f"The definition of {topic_title} is: {definition}"
+            "explanation": f"The core purpose is: {explanation}"
         })
         
     # 2. Warning / Pitfall question
@@ -264,15 +344,15 @@ def _build_quiz_heuristic(knowledge: dict, topic_title: str) -> list:
     if warnings:
         w = warnings[0]
         quiz.append({
-            "question": f"What is a critical warning or mistake to avoid regarding {topic_title}?",
+            "question": f"If a developer is working with {topic_title}, what critical pitfall must they avoid?",
             "options": [
                 f"A) {w}",
-                "B) Implementing default configurations without testing.",
-                "C) Writing self-documenting code remarks.",
-                "D) None of the above."
+                "B) Over-documenting the implementation details.",
+                "C) Using it in conjunction with standard industry tools.",
+                "D) Relying on built-in security features."
             ],
             "correct_answer": "A",
-            "explanation": f"A common warning/pitfall is: {w}"
+            "explanation": f"A common pitfall to avoid is: {w}"
         })
         
     # 3. Best practice question
@@ -280,15 +360,15 @@ def _build_quiz_heuristic(knowledge: dict, topic_title: str) -> list:
     if best_practices:
         bp = best_practices[0]
         quiz.append({
-            "question": f"Which of the following is a recommended best practice for {topic_title}?",
+            "question": f"To ensure stability and efficiency when using {topic_title}, which practice should be followed?",
             "options": [
                 f"A) {bp}",
-                "B) Disabling error logging to improve execution speed.",
-                "C) Hardcoding authentication credentials in source files.",
-                "D) None of the above."
+                "B) Disable all error logging to improve runtime execution speed.",
+                "C) Hardcode configuration values directly into the core source files.",
+                "D) Bypass standard initialization procedures."
             ],
             "correct_answer": "A",
-            "explanation": f"A key best practice is: {bp}"
+            "explanation": f"A recommended best practice is: {bp}"
         })
         
     # 4. Procedure / Step question
@@ -296,51 +376,50 @@ def _build_quiz_heuristic(knowledge: dict, topic_title: str) -> list:
     if procedures:
         step = procedures[0]
         quiz.append({
-            "question": f"What is a key step involved in implementing or configuring {topic_title}?",
+            "question": f"When implementing or configuring {topic_title}, what is a necessary action?",
             "options": [
                 f"A) {step}",
-                "B) Deleting configuration files before starting.",
-                "C) Setting all security permissions to public.",
-                "D) None of the above."
+                "B) Deleting all prior configuration files without backups.",
+                "C) Setting global variables for all internal states.",
+                "D) Skipping the validation phase."
             ],
             "correct_answer": "A",
-            "explanation": f"A key step is: {step}"
+            "explanation": f"An essential step is: {step}"
         })
 
     # 5. Example / Application question
+    applications = knowledge.get("applications", [])
     examples = knowledge.get("examples", [])
-    if examples:
-        ex = examples[0]
+    app_ex = applications[0] if applications else (examples[0] if examples else "")
+    if app_ex:
         quiz.append({
-            "question": f"Which of the following represents a practical example or application of {topic_title}?",
+            "question": f"In which of the following real-world scenarios is {topic_title} most effectively applied?",
             "options": [
-                f"A) {ex}",
-                "B) A static text file containing user interface notes.",
-                "C) A default database table with no entries.",
-                "D) None of the above."
+                f"A) {app_ex}",
+                "B) When building a purely static informational text file.",
+                "C) When creating a system with zero user interactions.",
+                "D) When reverting an application to its earliest prototype."
             ],
             "correct_answer": "A",
-            "explanation": f"A practical example is: {ex}"
+            "explanation": f"A primary application is: {app_ex}"
         })
         
-    # Fill up if empty or less than 3 questions
-    while len(quiz) < 3:
-        keywords = knowledge.get("keywords", [])
-        kw_str = f" involving {', '.join(keywords[:2])}" if keywords else ""
+    # Fill up if empty
+    if not quiz:
+        summary = knowledge.get("summary", f"This topic covers the key concepts of {topic_title}.")
         quiz.append({
-            "question": f"What is the primary subject or focus of {topic_title}?",
+            "question": f"What is the most accurate high-level description of {topic_title}?",
             "options": [
-                f"A) The core architectural mechanisms and principles of {topic_title}{kw_str}.",
-                "B) Standard website hosting layouts.",
-                "C) Basic filesystem directory styling.",
-                "D) None of the above."
+                f"A) {summary}",
+                "B) It is an outdated methodology not used in modern development.",
+                "C) It is a purely visual design concept with no technical function.",
+                "D) It is an experimental feature not meant for production."
             ],
             "correct_answer": "A",
-            "explanation": f"This timeline section specifically covers {topic_title}."
+            "explanation": f"The core definition is: {summary}"
         })
-        break
         
-    return quiz[:5]
+    return _randomize_quiz_options(quiz)[:5]
 
 
 def generate_quiz_for_single_topic(
@@ -411,7 +490,15 @@ def generate_quiz_for_single_topic(
         "quiz": questions,
     }
 
-    with open(cache_path, "w", encoding='utf-8') as f:
-        json.dump(result, f, indent=2, ensure_ascii=False)
+    # Atomic thread-safe cache write
+    dir_name = os.path.dirname(cache_path)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name, suffix='.json')
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(result, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, cache_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
     return result

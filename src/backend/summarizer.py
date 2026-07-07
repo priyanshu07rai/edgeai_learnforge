@@ -1,4 +1,4 @@
-"""
+﻿"""
 summarizer.py — MapReduce Overall Summarizer Pipeline
 
 Pre-processes transcripts, splits them into overlapping chunks,
@@ -50,7 +50,10 @@ def chunk_text_overlapping(text: str, chunk_size: int = 600, overlap: int = 100)
 
 def summarize_chunk(chunk_text: str, ollama_url: str = OLLAMA_URL, gemini_key: str = None) -> str:
     """Summarizes a single transcript chunk to key bullet points."""
-    prompt = f"""You are an expert technical writer.
+    prompt = f"""You are
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+ an expert technical writer.
 Analyze this segment of an educational video transcript.
 Generate 2-3 detailed, factual bullet points summarizing the technical concepts, steps, or code implementations discussed.
 Use objective, third-person voice. Do NOT include greetings, pleasantries, or filler.
@@ -112,7 +115,10 @@ def reduce_summaries(bullet_points: List[str], ollama_url: str = OLLAMA_URL, gem
     """Combines chunk summaries into a single cohesive overall structured JSON summary."""
     combined_bullets = "\n".join(bullet_points)
     
-    prompt = f"""# Role and Objective
+    prompt = f"""# Role
+
+CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
+ and Objective
 You are the lead technical editor for a premium educational platform. Your task is to combine these section summaries into a single, cohesive, high-level summary of the entire video.
 
 # Instructions
