@@ -400,7 +400,17 @@ async def generate_transcript(
             if _whisper_model is None:
                 from faster_whisper import WhisperModel
                 print("[LearnForge API] Loading Whisper Model into memory for the first time...")
-                _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=8)
+                # Dynamically choose device based on CUDA availability for GPU acceleration (e.g. Jetson Orin Nano)
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        print("[LearnForge API] CUDA is available. Loading Whisper Model on GPU (float16)...")
+                        _whisper_model = WhisperModel("tiny", device="cuda", compute_type="float16")
+                    else:
+                        raise ImportError
+                except Exception:
+                    print("[LearnForge API] CUDA not available or failed to load. Loading Whisper Model on CPU (int8)...")
+                    _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=8)
             whisper_model = _whisper_model
             print(f"[LearnForge API] Whisper model retrieved from cache. Transcribing audio...")
 
