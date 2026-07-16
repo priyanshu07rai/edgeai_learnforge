@@ -62,23 +62,18 @@ except Exception as e:
 import zstandard as zstd
 import tarfile
 
-print("Decompressing tar.zst...")
-tar_path = os.path.join(home_dir, "ollama.tar")
+print("Streaming decompress and extract directly in memory (0MB intermediate disk usage)...")
 try:
     dctx = zstd.ZstdDecompressor()
-    with open(zst_path, 'rb') as ifh, open(tar_path, 'wb') as ofh:
-        dctx.copy_stream(ifh, ofh)
-    print("Decompression complete. Extracting tar file...")
-    
-    with tarfile.open(tar_path) as tar:
-        tar.extractall(path=home_dir)
+    with open(zst_path, 'rb') as ifh:
+        with dctx.stream_reader(ifh) as reader:
+            with tarfile.open(fileobj=reader, mode='r|') as tar:
+                tar.extractall(path=home_dir)
     print("Extraction complete!")
     
-    # Cleanup files
+    # Cleanup file
     if os.path.exists(zst_path):
         os.remove(zst_path)
-    if os.path.exists(tar_path):
-        os.remove(tar_path)
     
     # Locate ollama binary in extracted folders
     binary_path = os.path.join(home_dir, "bin", "ollama")
