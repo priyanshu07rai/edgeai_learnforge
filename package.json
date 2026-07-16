@@ -20,7 +20,8 @@
     "react-dom": "^19.2.6",
     "react-player": "^3.4.0",
     "react-router-dom": "^7.16.0",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "@rolldown/binding-linux-arm64-gnu": "^1.1.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -34,8 +35,5 @@
     "globals": "^17.6.0",
     "tailwindcss": "^4.3.0",
     "vite": "^8.0.12"
-  },
-  "optionalDependencies": {
-    "@rolldown/binding-linux-arm64-gnu": "^1.1.5"
   }
 }
