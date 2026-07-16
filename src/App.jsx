@@ -4,8 +4,13 @@ import TranscriptPage from './pages/TranscriptPage';
 import DashboardPage from './pages/DashboardPage';
 
 function App() {
+  const getBasename = () => {
+    const match = window.location.pathname.match(/^\/user\/[^/]+\/proxy\/5173/);
+    return match ? match[0] : '/';
+  };
+
   return (
-    <Router>
+    <Router basename={getBasename()}>
       <Routes>
         <Route path="/" element={<TranscriptPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
