@@ -78,12 +78,29 @@ pip install --upgrade pip setuptools wheel
 # ── 3. INSTALL PYTHON DEPENDENCIES ────────────────────────────────────────────
 echo -e "\n${YELLOW}[Step 3/6] Installing Python packages...${NC}"
 
+# Set pip to not cache to save precious disk space
+export PIP_NO_CACHE_DIR=1
+
 if [ "$IS_JETSON" = true ]; then
     echo -e "${BLUE}Configuring PyTorch for Jetpack/Jetson platform...${NC}"
-    echo "Tip: For full GPU acceleration, it is recommended to install NVIDIA's official PyTorch wheel."
+    PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    echo "Python version: ${PY_VER}"
     
-    # Attempt to install base requirements
-    echo -e "Installing base dependencies from requirements.txt..."
+    # Try to install NVIDIA Jetpack optimized PyTorch to avoid downloading bloated PyPI CUDA wheels
+    if [ "$PY_VER" = "3.10" ]; then
+        echo "Installing NVIDIA PyTorch wheel for Python 3.10 (JetPack 6.0)..."
+        pip install torch --extra-index-url https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch || \
+        pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
+    elif [ "$PY_VER" = "3.8" ]; then
+        echo "Installing NVIDIA PyTorch wheel for Python 3.8 (JetPack 5.1)..."
+        pip install torch --extra-index-url https://developer.download.nvidia.com/compute/redist/jp/v512/pytorch || \
+        pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
+    else
+        echo "Installing CPU-only PyTorch fallback to save space..."
+        pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
+    fi
+    
+    echo "Installing remaining packages from requirements.txt..."
     pip install -r requirements.txt
 else
     pip install -r requirements.txt
