@@ -59,7 +59,14 @@ echo -e "\n${YELLOW}[Step 2/6] Setting up Python virtual environment...${NC}"
 
 if [ ! -d ".venv" ]; then
     echo "Creating virtual environment '.venv'..."
-    python3 -m venv .venv
+    # Try standard venv first, fallback to user virtualenv if venv fails (e.g. read-only filesystem)
+    if ! python3 -m venv .venv 2>/dev/null; then
+        echo -e "${YELLOW}Warning: python3-venv is not available. Attempting fallback to virtualenv...${NC}"
+        pip3 install --user virtualenv --no-warn-script-location
+        # Add local pip bin path to PATH just in case
+        export PATH=$HOME/.local/bin:$PATH
+        python3 -m virtualenv .venv
+    fi
 fi
 
 echo "Activating virtual environment..."
