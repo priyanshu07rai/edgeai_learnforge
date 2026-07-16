@@ -86,19 +86,9 @@ if [ "$IS_JETSON" = true ]; then
     PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
     echo "Python version: ${PY_VER}"
     
-    # Try to install NVIDIA Jetpack optimized PyTorch to avoid downloading bloated PyPI CUDA wheels
-    if [ "$PY_VER" = "3.10" ]; then
-        echo "Installing NVIDIA PyTorch wheel for Python 3.10 (JetPack 6.0)..."
-        pip install torch --extra-index-url https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch || \
-        pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
-    elif [ "$PY_VER" = "3.8" ]; then
-        echo "Installing NVIDIA PyTorch wheel for Python 3.8 (JetPack 5.1)..."
-        pip install torch --extra-index-url https://developer.download.nvidia.com/compute/redist/jp/v512/pytorch || \
-        pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
-    else
-        echo "Installing CPU-only PyTorch fallback to save space..."
-        pip install torch --extra-index-url https://download.pytorch.org/whl/cpu
-    fi
+    # Force pip to use the CPU-only PyTorch index exclusively to avoid downloading bloated PyPI CUDA wheels
+    echo "Installing CPU-only PyTorch to save disk space..."
+    pip install torch --index-url https://download.pytorch.org/whl/cpu
     
     echo "Installing remaining packages from requirements.txt..."
     pip install -r requirements.txt
@@ -112,31 +102,9 @@ python3 -m spacy download en_core_web_sm || {
     echo -e "${YELLOW}Warning: spaCy model download failed. App will fall back to regex pre-cleaning.${NC}"
 }
 
-# ── 4. OLLAMA CONFIGURATION & MODEL PULL ──────────────────────────────────────
-echo -e "\n${YELLOW}[Step 4/6] Setting up local LLM (Ollama)...${NC}"
-
-if ! command -v ollama &> /dev/null; then
-    echo "Ollama is not installed. Installing Ollama natively for Linux ARM64..."
-    curl -fsSL https://ollama.com/install.sh | sh
-    echo -e "${GREEN}✓ Ollama installed successfully.${NC}"
-else
-    echo -e "✓ Ollama is already installed."
-fi
-
-# Ensure Ollama service is running, and pull the model
-echo "Pulling llama3.2:1b model... (this may take a minute if not cached)"
-# We start/ensure the service runs, then pull
-if systemctl is-active --quiet ollama 2>/dev/null || service ollama status &>/dev/null; then
-    echo "Ollama service is active."
-else
-    echo "Starting Ollama service (sudo systemctl start ollama)..."
-    sudo systemctl start ollama || echo "Note: Unable to start systemd service. Make sure 'ollama serve' is running."
-fi
-
-# Pull the lightweight 1B model
-ollama pull llama3.2:1b || {
-    echo -e "${YELLOW}Warning: Failed to auto-pull llama3.2:1b. Make sure to pull it manually using 'ollama pull llama3.2:1b'${NC}"
-}
+# ── 4. OLLAMA CONFIGURATION & MODEL PULL (SKIPPED FOR GEMINI CLOUD MODE) ──────
+echo -e "\n${YELLOW}[Step 4/6] Skipping local Ollama setup (Cloud Gemini Mode Enabled)...${NC}"
+echo "Note: The backend will automatically use the Google Gemini API (or heuristic extraction) for notes and flashcard generation, saving ~1.5GB of disk space."
 
 # ── 5. FRONTEND INSTALLATION AND BUILD ────────────────────────────────────────
 echo -e "\n${YELLOW}[Step 5/6] Building frontend assets...${NC}"
