@@ -17,18 +17,24 @@ except Exception as e:
 tag = release_info['tag_name']
 print(f"Latest Ollama Release: {tag}")
 
-# Find JetPack 6 (or standard arm64 if not found) asset URL
+# Find standard arm64 asset (lightweight, ~100MB) to save disk space
 download_url = None
 asset_name = None
 for asset in release_info['assets']:
     name = asset['name']
-    if "arm64-jetpack6" in name:
+    if "arm64" in name and name.endswith(".tar.zst") and "jetpack" not in name:
         download_url = asset['browser_download_url']
         asset_name = name
         break
-    elif "arm64" in name and name.endswith(".tar.zst") and not download_url:
-        download_url = asset['browser_download_url']
-        asset_name = name
+
+# Fallback to any arm64 zst if standard not found
+if not download_url:
+    for asset in release_info['assets']:
+        name = asset['name']
+        if "arm64" in name and name.endswith(".tar.zst"):
+            download_url = asset['browser_download_url']
+            asset_name = name
+            break
 
 if not download_url:
     print("Could not find suitable arm64 asset.")
