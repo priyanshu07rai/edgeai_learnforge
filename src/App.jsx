@@ -5,7 +5,7 @@ import DashboardPage from './pages/DashboardPage';
 
 function App() {
   const getBasename = () => {
-    const match = window.location.pathname.match(/^(\/user\/[^/]+)?\/proxy\/5173/);
+    const match = window.location.pathname.match(/^.*\/proxy\/5173/);
     return match ? match[0] : '/';
   };
 
