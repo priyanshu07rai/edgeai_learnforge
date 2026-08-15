@@ -297,15 +297,16 @@ python3 -m uvicorn main:app \
     > "$LOG_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
 
-# Wait for backend (15s)
-for i in {1..15}; do
+# Wait for backend (45s — heavy ML imports take time)
+for i in {1..45}; do
     if curl -sf "http://localhost:${BACKEND_PORT}/health" > /dev/null 2>&1 || \
-       curl -sf "http://localhost:${BACKEND_PORT}/"      > /dev/null 2>&1; then
+       curl -sf "http://localhost:${BACKEND_PORT}/"      > /dev/null 2>&1 || \
+       curl -sf "http://localhost:${BACKEND_PORT}/docs"  > /dev/null 2>&1; then
         ok "Backend running (PID $BACKEND_PID)"
         break
     fi
     sleep 1
-    [[ "$i" == "15" ]] && warn "Backend slow to start — check: $LOG_DIR/backend.log"
+    [[ "$i" == "45" ]] && warn "Backend slow to start — check: $LOG_DIR/backend.log"
 done
 
 # Frontend
@@ -314,13 +315,13 @@ $NPM_BIN run preview -- --host 0.0.0.0 --port "$FRONTEND_PORT" \
     > "$LOG_DIR/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 
-for i in {1..10}; do
+for i in {1..25}; do
     if curl -sf "http://localhost:${FRONTEND_PORT}/" > /dev/null 2>&1; then
         ok "Frontend running (PID $FRONTEND_PID)"
         break
     fi
     sleep 1
-    [[ "$i" == "10" ]] && warn "Frontend slow to start — check: $LOG_DIR/frontend.log"
+    [[ "$i" == "25" ]] && warn "Frontend slow to start — check: $LOG_DIR/frontend.log"
 done
 
 echo "BACKEND_PID=$BACKEND_PID" > "$PIDS_FILE"
