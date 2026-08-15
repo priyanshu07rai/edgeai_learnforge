@@ -257,34 +257,30 @@ if [[ -n "$OLLAMA_BIN" ]]; then
 
     # Check if an Ollama server is already running
     if curl -sf http://127.0.0.1:11434/ > /dev/null 2>&1; then
-        ok "Ollama server already running on port 11434"
+        ok "Ollama server running on port 11434"
     else
-        log "Starting Ollama server..."
+        log "Starting Ollama background service..."
         OLLAMA_HOST=0.0.0.0 "$OLLAMA_BIN" serve > "$LOG_DIR/ollama.log" 2>&1 &
         OLLAMA_PID=$!
         echo "OLLAMA_PID=$OLLAMA_PID" >> "$PIDS_FILE" 2>/dev/null || true
-
-        # Wait for Ollama API to be ready (up to 40s)
-        for i in {1..40}; do
-            if curl -sf http://127.0.0.1:11434/ > /dev/null 2>&1; then
-                ok "Ollama server ready (PID $OLLAMA_PID)"
-                break
-            fi
-            sleep 1
-            [[ "$i" == "40" ]] && warn "Ollama slow to start — check: $LOG_DIR/ollama.log"
-        done
+        ok "Ollama background service launched (PID $OLLAMA_PID)"
     fi
 
     # Check if model already exists locally
     if "$OLLAMA_BIN" list 2>/dev/null | grep -q "${OLLAMA_MODEL%:*}"; then
-        ok "Model $OLLAMA_MODEL already downloaded ✓"
+        ok "Model $OLLAMA_MODEL ready ✓"
     else
         if $HAS_INTERNET; then
-            log "Pulling $OLLAMA_MODEL (~1.3GB, one-time download)..."
+            log "Pulling $OLLAMA_MODEL (~1.3GB)..."
+            # Wait briefly for server before pulling if model is missing
+            for i in {1..20}; do
+                curl -sf http://127.0.0.1:11434/ > /dev/null 2>&1 && break
+                sleep 1
+            done
             "$OLLAMA_BIN" pull "$OLLAMA_MODEL" 2>&1 | grep -E "pulling|verifying|writing|success" || true
             ok "Model $OLLAMA_MODEL ready!"
         else
-            warn "Offline — cannot pull $OLLAMA_MODEL. Using heuristic fallback."
+            warn "Offline — model not found locally. Using heuristic fallback."
         fi
     fi
 
