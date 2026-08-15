@@ -198,9 +198,112 @@ else
 fi
 
 # ════════════════════════════════════════════════════════════════════
-# ── PHASE 4: FRONTEND BUILD ──────────────────────────────────────────
+# ── PHASE 4: OLLAMA + LLAMA 3.2:1B ───────────────────────────────────
 # ════════════════════════════════════════════════════════════════════
-banner "Phase 4: Frontend Build"
+banner "Phase 4: Ollama + Llama 3.2:1b"
+
+OLLAMA_MODEL="llama3.2:1b"
+OLLAMA_BIN=""
+OLLAMA_INSTALL_DIR="$HOME/.local/learnforge-tools"
+OLLAMA_DATA_DIR="$HOME/.ollama"
+
+# ── Find existing Ollama binary ──────────────────────────────────────
+OLLAMA_CANDIDATES=(
+    "$(command -v ollama 2>/dev/null || true)"
+    "$OLLAMA_INSTALL_DIR/ollama"
+    "$HOME/.local/bin/ollama"
+    "/usr/local/bin/ollama"
+    "/usr/bin/ollama"
+)
+for candidate in "${OLLAMA_CANDIDATES[@]}"; do
+    if [[ -x "$candidate" ]]; then
+        OLLAMA_BIN="$candidate"
+        ok "Found Ollama at $OLLAMA_BIN ($("$OLLAMA_BIN" --version 2>/dev/null || echo 'installed'))"
+        break
+    fi
+done
+
+# ── Download Ollama if not found ─────────────────────────────────────
+if [[ -z "$OLLAMA_BIN" ]]; then
+    if ! $HAS_INTERNET; then
+        warn "Ollama not found and no internet — notes/flashcards will use heuristic fallback"
+    else
+        log "Downloading Ollama (~60MB)..."
+        mkdir -p "$OLLAMA_INSTALL_DIR"
+        if $IS_ARM; then
+            OLLAMA_URL="https://github.com/ollama/ollama/releases/latest/download/ollama-linux-arm64"
+        else
+            OLLAMA_URL="https://github.com/ollama/ollama/releases/latest/download/ollama-linux-amd64"
+        fi
+        OLLAMA_BIN="$OLLAMA_INSTALL_DIR/ollama"
+        if curl -L --progress-bar "$OLLAMA_URL" -o "$OLLAMA_BIN"; then
+            chmod +x "$OLLAMA_BIN"
+            ok "Ollama downloaded"
+        else
+            warn "Ollama download failed — notes/flashcards will use heuristic fallback"
+            OLLAMA_BIN=""
+        fi
+    fi
+fi
+
+# ── Start Ollama server & pull model ────────────────────────────────
+if [[ -n "$OLLAMA_BIN" ]]; then
+    # Set Ollama home so model persists between runs
+    export OLLAMA_HOME="$OLLAMA_DATA_DIR"
+    export OLLAMA_MODELS="$OLLAMA_DATA_DIR/models"
+    mkdir -p "$OLLAMA_DATA_DIR"
+
+    # Kill any stale Ollama server
+    pkill -f "ollama serve" 2>/dev/null || true
+    sleep 0.5
+
+    log "Starting Ollama server..."
+    OLLAMA_HOST=0.0.0.0 "$OLLAMA_BIN" serve > "$LOG_DIR/ollama.log" 2>&1 &
+    OLLAMA_PID=$!
+    echo "OLLAMA_PID=$OLLAMA_PID" >> "$PIDS_FILE" 2>/dev/null || true
+
+    # Wait for Ollama API to be ready (up to 15s)
+    for i in {1..15}; do
+        if curl -sf http://localhost:11434/ > /dev/null 2>&1; then
+            ok "Ollama server ready (PID $OLLAMA_PID)"
+            break
+        fi
+        sleep 1
+        [[ "$i" == "15" ]] && warn "Ollama slow to start — check: $LOG_DIR/ollama.log"
+    done
+
+    # Check if model already exists locally
+    if "$OLLAMA_BIN" list 2>/dev/null | grep -q "${OLLAMA_MODEL%:*}"; then
+        ok "Model $OLLAMA_MODEL already downloaded ✓"
+    else
+        if $HAS_INTERNET; then
+            log "Pulling $OLLAMA_MODEL (~1.3GB, one-time download)..."
+            "$OLLAMA_BIN" pull "$OLLAMA_MODEL" 2>&1 | grep -E "pulling|verifying|writing|success" || true
+            ok "Model $OLLAMA_MODEL ready!"
+        else
+            warn "Offline — cannot pull $OLLAMA_MODEL. Using heuristic fallback."
+        fi
+    fi
+
+    # Update cleanup to also kill Ollama
+    cleanup() {
+        echo -e "\n${YELLOW}Shutting down LearnForge AI...${NC}"
+        [[ -n "$BACKEND_PID"  ]] && kill "$BACKEND_PID"  2>/dev/null || true
+        [[ -n "$FRONTEND_PID" ]] && kill "$FRONTEND_PID" 2>/dev/null || true
+        [[ -n "$TUNNEL_PID"   ]] && kill "$TUNNEL_PID"   2>/dev/null || true
+        pkill -f "ollama serve" 2>/dev/null || true
+        rm -f "$PIDS_FILE"
+        echo -e "${GREEN}Goodbye!${NC}"
+    }
+    trap cleanup EXIT INT TERM
+else
+    warn "Ollama not available — notes/flashcards will use heuristic extraction"
+fi
+
+# ════════════════════════════════════════════════════════════════════
+# ── PHASE 5: FRONTEND BUILD ──────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════
+banner "Phase 5: Frontend Build"
 
 # Hash all relevant frontend sources
 BUILD_SOURCES_HASH=$(find src/ -name "*.jsx" -o -name "*.js" -o -name "*.css" -o -name "*.html" 2>/dev/null | \
