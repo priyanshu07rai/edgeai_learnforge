@@ -251,26 +251,29 @@ if [[ -n "$OLLAMA_BIN" ]]; then
     # Set Ollama home so model persists between runs
     export OLLAMA_HOME="$OLLAMA_DATA_DIR"
     export OLLAMA_MODELS="$OLLAMA_DATA_DIR/models"
+    export OLLAMA_KEEP_ALIVE="24h"
+    export OLLAMA_NUM_PARALLEL=1
     mkdir -p "$OLLAMA_DATA_DIR"
 
-    # Kill any stale Ollama server
-    pkill -f "ollama serve" 2>/dev/null || true
-    sleep 0.5
+    # Check if an Ollama server is already running
+    if curl -sf http://127.0.0.1:11434/ > /dev/null 2>&1; then
+        ok "Ollama server already running on port 11434"
+    else
+        log "Starting Ollama server..."
+        OLLAMA_HOST=0.0.0.0 "$OLLAMA_BIN" serve > "$LOG_DIR/ollama.log" 2>&1 &
+        OLLAMA_PID=$!
+        echo "OLLAMA_PID=$OLLAMA_PID" >> "$PIDS_FILE" 2>/dev/null || true
 
-    log "Starting Ollama server..."
-    OLLAMA_HOST=0.0.0.0 "$OLLAMA_BIN" serve > "$LOG_DIR/ollama.log" 2>&1 &
-    OLLAMA_PID=$!
-    echo "OLLAMA_PID=$OLLAMA_PID" >> "$PIDS_FILE" 2>/dev/null || true
-
-    # Wait for Ollama API to be ready (up to 15s)
-    for i in {1..15}; do
-        if curl -sf http://localhost:11434/ > /dev/null 2>&1; then
-            ok "Ollama server ready (PID $OLLAMA_PID)"
-            break
-        fi
-        sleep 1
-        [[ "$i" == "15" ]] && warn "Ollama slow to start — check: $LOG_DIR/ollama.log"
-    done
+        # Wait for Ollama API to be ready (up to 40s)
+        for i in {1..40}; do
+            if curl -sf http://127.0.0.1:11434/ > /dev/null 2>&1; then
+                ok "Ollama server ready (PID $OLLAMA_PID)"
+                break
+            fi
+            sleep 1
+            [[ "$i" == "40" ]] && warn "Ollama slow to start — check: $LOG_DIR/ollama.log"
+        done
+    fi
 
     # Check if model already exists locally
     if "$OLLAMA_BIN" list 2>/dev/null | grep -q "${OLLAMA_MODEL%:*}"; then
