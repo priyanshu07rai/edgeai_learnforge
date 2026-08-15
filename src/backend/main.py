@@ -333,16 +333,14 @@ def _perform_whisper_transcription(audio_path: str, video_id: str):
     if _whisper_model is None:
         from faster_whisper import WhisperModel
         print("[LearnForge API] Loading Whisper Model into memory for the first time...")
+        # Attempt CUDA GPU acceleration directly via ctranslate2 (native Jetson CUDA)
         try:
-            import torch
-            if torch.cuda.is_available():
-                print("[LearnForge API] CUDA is available. Loading Whisper Model on GPU (float16)...")
-                _whisper_model = WhisperModel("tiny", device="cuda", compute_type="float16")
-            else:
-                raise ImportError
-        except Exception:
+            print("[LearnForge API] Attempting CUDA GPU acceleration...")
+            _whisper_model = WhisperModel("tiny", device="cuda", compute_type="float16")
+            print("[LearnForge API] GPU acceleration initialized successfully!")
+        except Exception as cuda_err:
             num_cores = os.cpu_count() or 6
-            print(f"[LearnForge API] Loading Whisper Model on CPU (int8, {num_cores} threads)...")
+            print(f"[LearnForge API] GPU unavailable ({cuda_err}). Fallback to CPU int8 ({num_cores} threads).")
             _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=num_cores)
 
     whisper_model = _whisper_model
