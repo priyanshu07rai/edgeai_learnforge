@@ -309,9 +309,9 @@ for i in {1..45}; do
     [[ "$i" == "45" ]] && warn "Backend slow to start — check: $LOG_DIR/backend.log"
 done
 
-# Frontend
-log "Starting Vite preview server..."
-$NPM_BIN run preview -- --host 0.0.0.0 --port "$FRONTEND_PORT" \
+# Frontend — Python SPA server (no Node required, always works)
+log "Starting frontend SPA server..."
+python3 "$SCRIPT_DIR/serve_spa.py" "$FRONTEND_PORT" \
     > "$LOG_DIR/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 
