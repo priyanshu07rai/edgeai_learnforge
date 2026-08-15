@@ -219,10 +219,24 @@ else
         $NPM_BIN install --no-fund --no-audit --quiet 2>&1 | tail -5
     fi
 
-    $NPM_BIN run build 2>&1 | grep -E "(built in|error|warning|✓)" || true
+    # Run build, show only relevant output lines
+    set +e
+    $NPM_BIN run build 2>&1 | grep -E "(built in|error|Error|warning|✓|modules transformed)" || true
+    set -e
+
+    # Validate that the build actually produced output
+    if [[ ! -f "dist/index.html" ]]; then
+        err "Build failed — dist/index.html not found. Running full build with verbose output:"
+        $NPM_BIN run build
+        if [[ ! -f "dist/index.html" ]]; then
+            err "Build failed. Cannot continue."
+            exit 1
+        fi
+    fi
+
     mkdir -p dist
     echo "$BUILD_SOURCES_HASH" > "$BUILD_HASH_FILE"
-    ok "Frontend built successfully"
+    ok "Frontend built successfully ($(du -sh dist/ | cut -f1) on disk)"
 fi
 
 [[ "$SETUP_ONLY" == "true" ]] && { ok "Setup complete."; exit 0; }
