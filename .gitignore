@@ -31,3 +31,7 @@ uploads/
 cookies.txt/
 __pycache__/
 *.pyc
+
+# start.sh runtime artifacts
+.logs/
+dist/.build_hash
