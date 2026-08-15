@@ -47,6 +47,7 @@ export default function TranscriptPage() {
   // ── Video Syncing ──────────────────────────────────────────────────────────
   const videoRef = useRef(null);      // native <video> element
   const videoWrapperRef = useRef(null);
+  const [localVideoUrl, setLocalVideoUrl] = useState(null); // blob URL for instant preview
   const [isPiP, setIsPiP] = useState(false);
   const [dismissPiP, setDismissPiP] = useState(false);
 
