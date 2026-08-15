@@ -47,7 +47,27 @@ export default function TranscriptPage() {
   // ── Video Syncing ──────────────────────────────────────────────────────────
   const videoRef = useRef(null);      // native <video> element
   const videoWrapperRef = useRef(null);
-  const [localVideoUrl, setLocalVideoUrl] = useState(null); // blob URL for instant preview
+  const [isPiP, setIsPiP] = useState(false);
+  const [dismissPiP, setDismissPiP] = useState(false);
+
+  // Picture-in-Picture IntersectionObserver (detects when main video is scrolled past)
+  useEffect(() => {
+    if (!videoWrapperRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) {
+          setIsPiP(true);
+        } else {
+          setIsPiP(false);
+          setDismissPiP(false);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(videoWrapperRef.current);
+    return () => observer.disconnect();
+  }, [transcriptData, localVideoUrl]);
 
   // Cleanup blob URL on unmount
   useEffect(() => {
@@ -296,26 +316,70 @@ export default function TranscriptPage() {
 
             {/* Video Player */}
             {(localVideoUrl || transcriptData?.youtube_video_id || (videoId && !transcriptData?.youtube_video_id)) && (
-              <div
-                ref={videoWrapperRef}
-                className="w-full max-w-3xl mx-auto bg-black rounded-xl overflow-hidden border border-[#2a2a2a] shadow-lg flex justify-center transition-all mb-4"
-              >
-                {transcriptData?.youtube_video_id ? (
-                  <iframe
-                    src={`https://www.youtube.com/embed/${transcriptData.youtube_video_id}?enablejsapi=1`}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    style={{ width: '100%', aspectRatio: '16/9', border: 'none' }}
-                  />
-                ) : (
-                  <video
-                    ref={videoRef}
-                    src={localVideoUrl || (videoId ? getVideoUrl(videoId) : '')}
-                    controls
-                    preload="metadata"
-                    style={{ width: '100%', display: 'block', background: '#000' }}
-                  />
+              <div ref={videoWrapperRef} className="w-full max-w-3xl mx-auto mb-4 relative">
+                {/* When floating in PiP, render a subtle placeholder to preserve layout height */}
+                {isPiP && !dismissPiP && (
+                  <div className="w-full h-[360px] rounded-xl border border-dashed border-[#262626] bg-[#0d0d0d] flex flex-col items-center justify-center gap-2 text-xs text-[#525252]">
+                    <span>🎬 Video playing in mini player below</span>
+                    <button
+                      onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                      className="px-2.5 py-1 text-[11px] text-purple-400 bg-purple-500/10 border border-purple-500/20 rounded-md hover:bg-purple-500/20 transition-all"
+                    >
+                      Scroll to Top
+                    </button>
+                  </div>
                 )}
+
+                <div
+                  className={
+                    isPiP && !dismissPiP
+                      ? "fixed bottom-6 left-6 z-50 w-80 sm:w-96 bg-[#0a0a0a] rounded-2xl overflow-hidden border border-[#7C3AED]/50 shadow-[0_20px_50px_rgba(124,58,237,0.35)] transition-all duration-300 flex flex-col"
+                      : "w-full bg-black rounded-xl overflow-hidden border border-[#2a2a2a] shadow-lg flex flex-col justify-center transition-all"
+                  }
+                >
+                  {/* Floating Mini Player Controls Header */}
+                  {isPiP && !dismissPiP && (
+                    <div className="flex items-center justify-between px-3 py-1.5 bg-[#141414] border-b border-[#262626]">
+                      <span className="flex items-center gap-1.5 text-purple-400 font-medium text-[11px]">
+                        <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                        Mini Player
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                          title="Scroll to Top"
+                          className="text-[10px] text-neutral-300 hover:text-white px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                        >
+                          ⬆ Top
+                        </button>
+                        <button
+                          onClick={() => setDismissPiP(true)}
+                          title="Minimize mini player"
+                          className="text-neutral-400 hover:text-red-400 transition-colors font-bold px-1 text-xs"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {transcriptData?.youtube_video_id ? (
+                    <iframe
+                      src={`https://www.youtube.com/embed/${transcriptData.youtube_video_id}?enablejsapi=1`}
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      style={{ width: '100%', aspectRatio: '16/9', border: 'none' }}
+                    />
+                  ) : (
+                    <video
+                      ref={videoRef}
+                      src={localVideoUrl || (videoId ? getVideoUrl(videoId) : '')}
+                      controls
+                      preload="metadata"
+                      style={{ width: '100%', display: 'block', background: '#000' }}
+                    />
+                  )}
+                </div>
               </div>
             )}
 
