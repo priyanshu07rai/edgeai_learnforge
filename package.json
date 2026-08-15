@@ -21,7 +21,7 @@
     "react-player": "^3.4.0",
     "react-router-dom": "^7.16.0",
     "uuid": "^14.0.0",
-    "@rolldown/binding-linux-arm64-gnu": "^1.1.5"
+    "@rolldown/binding-linux-arm64-gnu": "1.0.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
