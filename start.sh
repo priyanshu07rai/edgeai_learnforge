@@ -220,6 +220,7 @@ else
     fi
 
     $NPM_BIN run build 2>&1 | grep -E "(built in|error|warning|✓)" || true
+    mkdir -p dist
     echo "$BUILD_SOURCES_HASH" > "$BUILD_HASH_FILE"
     ok "Frontend built successfully"
 fi
