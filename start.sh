@@ -340,6 +340,11 @@ else
     mkdir -p dist
     echo "$BUILD_SOURCES_HASH" > "$BUILD_HASH_FILE"
     ok "Frontend built successfully ($(du -sh dist/ | cut -f1) on disk)"
+
+    # Clean up node_modules to reclaim ~350MB disk space (since serve_spa.py serves built dist/ directly)
+    log "Reclaiming disk space: removing build-only node_modules..."
+    rm -rf node_modules ~/.npm ~/.cache/pip 2>/dev/null || true
+    ok "Disk cleanup complete"
 fi
 
 [[ "$SETUP_ONLY" == "true" ]] && { ok "Setup complete."; exit 0; }

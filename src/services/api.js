@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Configure base URL from environment variables if present
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// Configure base URL: empty string '' uses relative path (proxied by serve_spa.py in production)
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL !== undefined ? import.meta.env.VITE_API_BASE_URL : '';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
