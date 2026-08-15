@@ -1,52 +1,34 @@
-# Deployment Guide — NVIDIA Jetson Orin Nano
+# Deployment Guide — NVIDIA Jetson & Linux Boards
 
-This guide explains how to deploy and run **LearnForge AI** on the **NVIDIA Jetson Orin Nano** platform (ARM64 architecture running Linux / JetPack).
-
----
-
-## 📋 System Prerequisites
-
-Ensure the following tools are installed on your Jetson board before running the setup scripts:
-
-1. **JetPack SDK (5.x or 6.x)** (pre-installed on the cloud lab instance)
-2. **Node.js (v18+) & npm**
-   ```bash
-   sudo apt-get update
-   sudo apt-get install -y nodejs npm
-   ```
-3. **Python 3, pip, and venv**
-   ```bash
-   sudo apt-get install -y python3-pip python3-venv python3-dev build-essential
-   ```
-4. **FFmpeg** (necessary for audio preprocessing)
-   ```bash
-   sudo apt-get install -y ffmpeg
-   ```
+This guide explains how to deploy and run **LearnForge AI** on any remote **NVIDIA Jetson** or Linux platform via SSH using a single command: `./start.sh`.
 
 ---
 
-## ⚡ Step 1: Export CUDA Environment Variables
+## ⚡ Quick Start (Single Command)
 
-To ensure `faster-whisper` and `PyTorch` can access the Jetson's CUDA cores, make sure the CUDA toolkit paths are added to your environment.
-
-Run the following commands or add them to your `~/.bashrc`:
+To deploy LearnForge AI from a fresh clone:
 
 ```bash
-export PATH=/usr/local/cuda/bin:$PATH
-export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+git clone https://github.com/priyanshu07rai/edgeai_learnforge.git ~/edgeai_learnforge
+cd ~/edgeai_learnforge
+chmod +x start.sh
+./start.sh
 ```
+
+`./start.sh` handles **100% of the deployment workflow** automatically:
+1. **Auto-Detects Environment**: Identifies ARM64 / Jetson vs x86 Linux.
+2. **Auto-Provisions Tools**: Downloads Node.js 20 & Python `.venv` into user-local space without `sudo`.
+3. **Storage Optimized**: Installs CPU-only PyTorch and purges `node_modules` after building to stay under **4 GB disk space**.
+4. **Offline AI Services**: Provisions Ollama (`llama3.2:1b`), faster-whisper, and spaCy.
+5. **Reverse Proxy & Tunnel**: Launches a Python SPA reverse proxy and exposes a global HTTPS URL via **Cloudflare Tunnel**.
 
 ---
 
-## 🛠️ Step 2: Automated Deployment Setup
+## 📋 System Requirements
 
-We have provided a unified script `deploy.sh` to automate the setup process. It will:
-- Initialize the Python virtual environment (`.venv`).
-- Install Python and Node.js dependencies.
-- Pre-download the spaCy `en_core_web_sm` model.
-- Automatically check for, install, and start **Ollama** on Linux ARM64.
-- Pull the lightweight `llama3.2:1b` model.
-- Compile and build the frontend assets (`npm run build`).
+- **OS**: Ubuntu 20.04 / 22.04 LTS (ARM64 or x86_64)
+- **RAM**: 4 GB minimum (8 GB recommended)
+- **Disk Space**: ~3.5–4.0 GB free
 
 Run the deployment script from the project root:
 
