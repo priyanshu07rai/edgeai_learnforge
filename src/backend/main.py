@@ -495,6 +495,9 @@ async def generate_transcript(
                         os.remove(wav_path)
                     except Exception:
                         pass
+        except Exception as file_err:
+            print(f"[LearnForge API] File processing error: {file_err}")
+            raise HTTPException(status_code=500, detail=str(file_err))
         
     elif youtube_url:
         yt_id = extract_youtube_video_id(youtube_url)
