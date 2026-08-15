@@ -341,8 +341,9 @@ def _perform_whisper_transcription(audio_path: str, video_id: str):
             else:
                 raise ImportError
         except Exception:
-            print("[LearnForge API] CUDA not available or failed to load. Loading Whisper Model on CPU (int8)...")
-            _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=4)
+            num_cores = os.cpu_count() or 6
+            print(f"[LearnForge API] Loading Whisper Model on CPU (int8, {num_cores} threads)...")
+            _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=num_cores)
 
     whisper_model = _whisper_model
     print(f"[LearnForge API] Whisper model retrieved from cache. Transcribing audio...")
@@ -351,7 +352,7 @@ def _perform_whisper_transcription(audio_path: str, video_id: str):
         lang_code_raw, lang_prob, _ = whisper_model.detect_language(
             audio_path,
             vad_filter=True,
-            language_detection_segments=3,
+            language_detection_segments=1,
         )
         language_code = lang_code_raw if lang_code_raw else "en"
         print(f"[LearnForge API] Detected language: {language_code} (prob={lang_prob:.2f})")
