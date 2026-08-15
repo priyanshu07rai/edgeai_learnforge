@@ -14,6 +14,7 @@ import shutil
 import http.cookiejar
 import requests
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks, Request
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -326,7 +327,88 @@ def fetch_raw_transcript_safely(yt_id: str):
     except Exception as e:
         print(f"[LearnForge API] Smart transcript listing failed: {e}")
         
-    return api.fetch(yt_id), 'en'
+def _perform_whisper_transcription(audio_path: str, video_id: str):
+    """Synchronous Whisper transcription running in worker thread to prevent GIL blocking FastAPI."""
+    global _whisper_model
+    if _whisper_model is None:
+        from faster_whisper import WhisperModel
+        print("[LearnForge API] Loading Whisper Model into memory for the first time...")
+        try:
+            import torch
+            if torch.cuda.is_available():
+                print("[LearnForge API] CUDA is available. Loading Whisper Model on GPU (float16)...")
+                _whisper_model = WhisperModel("tiny", device="cuda", compute_type="float16")
+            else:
+                raise ImportError
+        except Exception:
+            print("[LearnForge API] CUDA not available or failed to load. Loading Whisper Model on CPU (int8)...")
+            _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=4)
+
+    whisper_model = _whisper_model
+    print(f"[LearnForge API] Whisper model retrieved from cache. Transcribing audio...")
+
+    try:
+        lang_code_raw, lang_prob, _ = whisper_model.detect_language(
+            audio_path,
+            vad_filter=True,
+            language_detection_segments=3,
+        )
+        language_code = lang_code_raw if lang_code_raw else "en"
+        print(f"[LearnForge API] Detected language: {language_code} (prob={lang_prob:.2f})")
+    except Exception as lang_err:
+        print(f"[LearnForge API] Language detection failed: {lang_err}. Defaulting to English.")
+        language_code = "en"
+
+    whisper_task = "transcribe" if language_code == "en" else "translate"
+    print(f"[LearnForge API] Whisper task='{whisper_task}' for source language '{language_code}'")
+
+    _transcription_progress[video_id] = {"segments": 0, "audio_pos": 0.0, "done": False}
+
+    segments_iter, info = whisper_model.transcribe(
+        audio_path,
+        beam_size=1,
+        best_of=1,
+        language=language_code,
+        task=whisper_task,
+        vad_filter=True,
+        vad_parameters=dict(
+            min_silence_duration_ms=500,
+            speech_pad_ms=200
+        ),
+        condition_on_previous_text=False,
+    )
+
+    segments = []
+    full_text_parts = []
+    for seg in segments_iter:
+        seg_start = seg.start
+        seg_end = seg.end
+        seg_text = seg.text.strip()
+        if not seg_text:
+            continue
+
+        segments.append({
+            "start": seg_start,
+            "end": seg_end,
+            "text": seg_text
+        })
+
+        m, s = divmod(int(seg_start), 60)
+        h, m = divmod(m, 60)
+        timestamp = f"[{h:02d}:{m:02d}:{s:02d}]" if h > 0 else f"[{m:02d}:{s:02d}]"
+        full_text_parts.append(f"{timestamp} {seg_text}")
+
+        _transcription_progress[video_id]["segments"] = len(segments)
+        _transcription_progress[video_id]["audio_pos"] = seg_end
+
+    transcript = "\n".join(full_text_parts)
+    duration = segments[-1]["end"] if segments else 0.0
+    print(f"[LearnForge API] Whisper transcription complete. {len(segments)} segments, {duration:.1f}s.")
+    if video_id in _transcription_progress:
+        _transcription_progress[video_id]["done"] = True
+
+    return transcript, duration, segments, language_code
+
 
 @app.post("/transcript")
 async def generate_transcript(
@@ -396,110 +478,23 @@ async def generate_transcript(
                 audio_path = tmp_path
                 print(f"[LearnForge API] FFmpeg conversion error: {conv_err}. Using original.")
 
-            global _whisper_model
-            if _whisper_model is None:
-                from faster_whisper import WhisperModel
-                print("[LearnForge API] Loading Whisper Model into memory for the first time...")
-                # Dynamically choose device based on CUDA availability for GPU acceleration (e.g. Jetson Orin Nano)
-                try:
-                    import torch
-                    if torch.cuda.is_available():
-                        print("[LearnForge API] CUDA is available. Loading Whisper Model on GPU (float16)...")
-                        _whisper_model = WhisperModel("tiny", device="cuda", compute_type="float16")
-                    else:
-                        raise ImportError
-                except Exception:
-                    print("[LearnForge API] CUDA not available or failed to load. Loading Whisper Model on CPU (int8)...")
-                    _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=8)
-            whisper_model = _whisper_model
-            print(f"[LearnForge API] Whisper model retrieved from cache. Transcribing audio...")
-
-            # ── Language detection then single-pass transcription ─────────────────
-            # Step 1: Use detect_language() — runs in ~1s on first 30s of audio
-            # Step 2: if non-English → task="translate" → clean English output
-            #         if English     → task="transcribe" → fastest path
-            #
-            # WHY: task="transcribe" on Hindi with tiny model produces garbled
-            # transliterated text ("Roto nation op l ko h") that causes the
-            # segmenter to hallucinate random topic names like "Frontend React".
-            # task="translate" produces coherent English for any source language.
-
             try:
-                lang_code_raw, lang_prob, _ = whisper_model.detect_language(
-                    audio_path,
-                    vad_filter=True,
-                    language_detection_segments=3,     # sample 3 × 30s windows
+                transcript, duration, segments, language_code = await run_in_threadpool(
+                    _perform_whisper_transcription, audio_path, video_id
                 )
-                language_code = lang_code_raw if lang_code_raw else "en"
-                print(f"[LearnForge API] Detected language: {language_code} (prob={lang_prob:.2f})")
-            except Exception as lang_err:
-                print(f"[LearnForge API] Language detection failed: {lang_err}. Defaulting to English.")
-                language_code = "en"
-
-            # Choose task based on detected language
-            whisper_task = "transcribe" if language_code == "en" else "translate"
-            print(f"[LearnForge API] Whisper task='{whisper_task}' for source language '{language_code}'")
-
-            # Initialise live progress tracking
-            _transcription_progress[video_id] = {"segments": 0, "audio_pos": 0.0, "done": False}
-
-            segments_iter, info = whisper_model.transcribe(
-                audio_path,
-                beam_size=1,                      # greedy — fastest on CPU
-                best_of=1,                        # no sampling hypotheses
-                language=language_code,           # pin detected language (avoids re-detection)
-                task=whisper_task,                # translate non-English → clean English
-                vad_filter=True,                  # skip silence & background noise
-                vad_parameters=dict(
-                    min_silence_duration_ms=500,
-                    speech_pad_ms=200
-                ),
-                condition_on_previous_text=False, # prevents hallucination loops
-            )
-
-            full_text_parts = []
-            for seg in segments_iter:
-                seg_start = seg.start
-                seg_end = seg.end
-                seg_text = seg.text.strip()
-                if not seg_text:
-                    continue  # skip empty VAD-filtered segments
-
-                segments.append({
-                    "start": seg_start,
-                    "end": seg_end,
-                    "text": seg_text
-                })
-
-                m, s = divmod(int(seg_start), 60)
-                h, m = divmod(m, 60)
-                timestamp = f"[{h:02d}:{m:02d}:{s:02d}]" if h > 0 else f"[{m:02d}:{s:02d}]"
-                full_text_parts.append(f"{timestamp} {seg_text}")
-
-                # Update live progress
-                _transcription_progress[video_id]["segments"] = len(segments)
-                _transcription_progress[video_id]["audio_pos"] = seg_end
-
-            transcript = "\n".join(full_text_parts)
-            duration = segments[-1]["end"] if segments else 0.0
-            print(f"[LearnForge API] Whisper transcription complete. {len(segments)} segments, {duration:.1f}s.")
-            if video_id in _transcription_progress:
-                _transcription_progress[video_id]["done"] = True
-
-        except Exception as whisper_err:
-            print(f"[LearnForge API] Whisper transcription failed: {whisper_err}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Audio transcription failed: {str(whisper_err)}. Make sure the file contains valid audio."
-            )
-        finally:
-            # Clean up the generated WAV file, but KEEP the MP4 for frontend streaming
-            wav_path = os.path.join(tmp_dir, "audio.wav")
-            if os.path.exists(wav_path):
-                try:
-                    os.remove(wav_path)
-                except:
-                    pass
+            except Exception as whisper_err:
+                print(f"[LearnForge API] Whisper transcription failed: {whisper_err}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Audio transcription failed: {str(whisper_err)}. Make sure the file contains valid audio."
+                )
+            finally:
+                wav_path = os.path.join(tmp_dir, "audio.wav")
+                if os.path.exists(wav_path):
+                    try:
+                        os.remove(wav_path)
+                    except Exception:
+                        pass
         
     elif youtube_url:
         yt_id = extract_youtube_video_id(youtube_url)

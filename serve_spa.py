@@ -44,7 +44,7 @@ class LearnForgeHandler(BaseHTTPRequestHandler):
 
     def _proxy_to_backend(self):
         try:
-            conn = http.client.HTTPConnection(BACKEND_HOST, BACKEND_PORT, timeout=120)
+            conn = http.client.HTTPConnection(BACKEND_HOST, BACKEND_PORT, timeout=1800)
             body_len = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(body_len) if body_len > 0 else None
             forward_headers = {
