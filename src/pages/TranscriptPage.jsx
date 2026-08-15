@@ -13,7 +13,7 @@ import { fetchTranscript, processVideo, generateNotesForTopic, generateFlashcard
 import { saveSession } from './DashboardPage';
 
 const PRELOAD_AHEAD = 2;
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL !== undefined ? import.meta.env.VITE_API_BASE_URL : '';
 
 export default function TranscriptPage() {
   const navigate = useNavigate();
