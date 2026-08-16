@@ -330,83 +330,96 @@ def fetch_raw_transcript_safely(yt_id: str):
 def _perform_whisper_transcription(audio_path: str, video_id: str):
     """Synchronous Whisper transcription running in worker thread to prevent GIL blocking FastAPI."""
     global _whisper_model
-    if _whisper_model is None:
-        from faster_whisper import WhisperModel
-        print("[LearnForge API] Loading Whisper Model into memory for the first time...")
-        # Attempt CUDA GPU acceleration directly via ctranslate2 (native Jetson CUDA)
-        try:
-            print("[LearnForge API] Attempting CUDA GPU acceleration...")
-            _whisper_model = WhisperModel("tiny", device="cuda", compute_type="float16")
-            print("[LearnForge API] GPU acceleration initialized successfully!")
-        except Exception as cuda_err:
-            num_cores = os.cpu_count() or 6
-            print(f"[LearnForge API] GPU unavailable ({cuda_err}). Fallback to CPU int8 ({num_cores} threads).")
+    from faster_whisper import WhisperModel
+    num_cores = os.cpu_count() or 6
+
+    def _get_or_create_model(force_cpu=False):
+        global _whisper_model
+        if force_cpu or _whisper_model is None:
+            if not force_cpu:
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        print("[LearnForge API] Attempting CUDA GPU acceleration...")
+                        _whisper_model = WhisperModel("tiny", device="cuda", compute_type="float16")
+                        return _whisper_model
+                except Exception:
+                    pass
+            print(f"[LearnForge API] Loading Whisper Model on CPU int8 ({num_cores} threads)...")
             _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=num_cores)
+        return _whisper_model
 
-    whisper_model = _whisper_model
-    print(f"[LearnForge API] Whisper model retrieved from cache. Transcribing audio...")
+    def _execute_whisper(model_instance):
+        try:
+            lang_code_raw, lang_prob, _ = model_instance.detect_language(
+                audio_path,
+                vad_filter=True,
+                language_detection_segments=1,
+            )
+            language_code = lang_code_raw if lang_code_raw else "en"
+            print(f"[LearnForge API] Detected language: {language_code} (prob={lang_prob:.2f})")
+        except Exception as lang_err:
+            print(f"[LearnForge API] Language detection failed: {lang_err}. Defaulting to English.")
+            language_code = "en"
 
-    try:
-        lang_code_raw, lang_prob, _ = whisper_model.detect_language(
+        whisper_task = "transcribe" if language_code == "en" else "translate"
+        print(f"[LearnForge API] Whisper task='{whisper_task}' for source language '{language_code}'")
+
+        _transcription_progress[video_id] = {"segments": 0, "audio_pos": 0.0, "done": False}
+
+        segments_iter, info = model_instance.transcribe(
             audio_path,
+            beam_size=1,
+            best_of=1,
+            language=language_code,
+            task=whisper_task,
             vad_filter=True,
-            language_detection_segments=1,
+            vad_parameters=dict(min_silence_duration_ms=500, speech_pad_ms=200),
+            condition_on_previous_text=False,
         )
-        language_code = lang_code_raw if lang_code_raw else "en"
-        print(f"[LearnForge API] Detected language: {language_code} (prob={lang_prob:.2f})")
-    except Exception as lang_err:
-        print(f"[LearnForge API] Language detection failed: {lang_err}. Defaulting to English.")
-        language_code = "en"
 
-    whisper_task = "transcribe" if language_code == "en" else "translate"
-    print(f"[LearnForge API] Whisper task='{whisper_task}' for source language '{language_code}'")
+        segments = []
+        full_text_parts = []
+        for seg in segments_iter:
+            seg_start = seg.start
+            seg_end = seg.end
+            seg_text = seg.text.strip()
+            if not seg_text:
+                continue
 
-    _transcription_progress[video_id] = {"segments": 0, "audio_pos": 0.0, "done": False}
+            segments.append({
+                "start": seg_start,
+                "end": seg_end,
+                "text": seg_text
+            })
 
-    segments_iter, info = whisper_model.transcribe(
-        audio_path,
-        beam_size=1,
-        best_of=1,
-        language=language_code,
-        task=whisper_task,
-        vad_filter=True,
-        vad_parameters=dict(
-            min_silence_duration_ms=500,
-            speech_pad_ms=200
-        ),
-        condition_on_previous_text=False,
-    )
+            m, s = divmod(int(seg_start), 60)
+            h, m = divmod(m, 60)
+            timestamp = f"[{h:02d}:{m:02d}:{s:02d}]" if h > 0 else f"[{m:02d}:{s:02d}]"
+            full_text_parts.append(f"{timestamp} {seg_text}")
 
-    segments = []
-    full_text_parts = []
-    for seg in segments_iter:
-        seg_start = seg.start
-        seg_end = seg.end
-        seg_text = seg.text.strip()
-        if not seg_text:
-            continue
+            _transcription_progress[video_id]["segments"] = len(segments)
+            _transcription_progress[video_id]["audio_pos"] = seg_end
 
-        segments.append({
-            "start": seg_start,
-            "end": seg_end,
-            "text": seg_text
-        })
+        transcript = "\n".join(full_text_parts)
+        duration = segments[-1]["end"] if segments else 0.0
+        print(f"[LearnForge API] Whisper transcription complete. {len(segments)} segments, {duration:.1f}s.")
+        if video_id in _transcription_progress:
+            _transcription_progress[video_id]["done"] = True
 
-        m, s = divmod(int(seg_start), 60)
-        h, m = divmod(m, 60)
-        timestamp = f"[{h:02d}:{m:02d}:{s:02d}]" if h > 0 else f"[{m:02d}:{s:02d}]"
-        full_text_parts.append(f"{timestamp} {seg_text}")
+        return transcript, duration, segments, language_code
 
-        _transcription_progress[video_id]["segments"] = len(segments)
-        _transcription_progress[video_id]["audio_pos"] = seg_end
-
-    transcript = "\n".join(full_text_parts)
-    duration = segments[-1]["end"] if segments else 0.0
-    print(f"[LearnForge API] Whisper transcription complete. {len(segments)} segments, {duration:.1f}s.")
-    if video_id in _transcription_progress:
-        _transcription_progress[video_id]["done"] = True
-
-    return transcript, duration, segments, language_code
+    # Attempt 1: run model
+    initial_model = _get_or_create_model(force_cpu=False)
+    try:
+        return _execute_whisper(initial_model)
+    except Exception as err:
+        err_str = str(err).lower()
+        if "cublas" in err_str or "cuda" in err_str or "dll" in err_str or "driver" in err_str:
+            print(f"[LearnForge API] GPU/CUDA runtime error ({err}). Auto-falling back to CPU...")
+            cpu_model = _get_or_create_model(force_cpu=True)
+            return _execute_whisper(cpu_model)
+        raise err
 
 
 @app.post("/transcript")
