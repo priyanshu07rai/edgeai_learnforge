@@ -9,12 +9,35 @@ import TopicProcessor from '../components/TopicProcessor';
 import DebugViewer from '../components/DebugViewer';
 import FloatingAI from '../components/FloatingAI';
 import ThemeToggle from '../components/ThemeToggle';
-// Using native HTML5 <video> — no library needed
 import { fetchTranscript, processVideo, generateNotesForTopic, generateFlashcardsForTopic, generateQuizForTopic, fetchOverallSummary, getVideoUrl } from '../services/api';
 import { saveSession } from './DashboardPage';
 
 const PRELOAD_AHEAD = 2;
 const API_BASE = import.meta.env.VITE_API_BASE_URL !== undefined ? import.meta.env.VITE_API_BASE_URL : '';
+const TRANSCRIPT_CACHE_KEY = 'lf_transcript_cache';
+
+function getTranscriptCache() {
+  try {
+    const raw = sessionStorage.getItem(TRANSCRIPT_CACHE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveTranscriptCache(data, topicsList, activeIdx = -1) {
+  try {
+    sessionStorage.setItem(TRANSCRIPT_CACHE_KEY, JSON.stringify({
+      transcriptData: data,
+      topics: topicsList,
+      activeTopicIdx: activeIdx
+    }));
+  } catch {}
+}
+
+function clearTranscriptCache() {
+  try {
+    sessionStorage.removeItem(TRANSCRIPT_CACHE_KEY);
+  } catch {}
+}
 
 export default function TranscriptPage() {
   const navigate = useNavigate();
@@ -23,9 +46,10 @@ export default function TranscriptPage() {
   const [isProcessingTopics, setIsProcessingTopics] = useState(false);
   const [error, setError] = useState(null);
 
-  const [transcriptData, setTranscriptData] = useState(null);
-  const [topics, setTopics] = useState([]);
-  const [activeTopicIdx, setActiveTopicIdx] = useState(-1);
+  const cachedSession = getTranscriptCache();
+  const [transcriptData, setTranscriptData] = useState(cachedSession?.transcriptData ?? null);
+  const [topics, setTopics] = useState(cachedSession?.topics ?? []);
+  const [activeTopicIdx, setActiveTopicIdx] = useState(cachedSession?.activeTopicIdx ?? -1);
   const [activeTab, setActiveTab] = useState('notes');
 
   const [notes, setNotes] = useState([]);
@@ -46,13 +70,12 @@ export default function TranscriptPage() {
   const [showDebug, setShowDebug] = useState(false);
 
   // ── Video Syncing ──────────────────────────────────────────────────────────
-  const videoRef = useRef(null);      // native <video> element
+  const videoRef = useRef(null);
   const videoWrapperRef = useRef(null);
-  const [localVideoUrl, setLocalVideoUrl] = useState(null); // blob URL for instant preview
+  const [localVideoUrl, setLocalVideoUrl] = useState(null);
   const [isPiP, setIsPiP] = useState(false);
   const [dismissPiP, setDismissPiP] = useState(false);
 
-  // Picture-in-Picture IntersectionObserver (detects when main video is scrolled past)
   useEffect(() => {
     if (!videoWrapperRef.current) return;
     const observer = new IntersectionObserver(
@@ -71,7 +94,6 @@ export default function TranscriptPage() {
     return () => observer.disconnect();
   }, [transcriptData, localVideoUrl]);
 
-  // Cleanup blob URL on unmount
   useEffect(() => {
     return () => { if (localVideoUrl) URL.revokeObjectURL(localVideoUrl); };
   }, [localVideoUrl]);
@@ -84,13 +106,12 @@ export default function TranscriptPage() {
     const vid = videoRef.current;
     if (vid) {
       vid.currentTime = timeSecs;
-      vid.play().catch(() => {});   // catch autoplay-policy block silently
+      vid.play().catch(() => {});
     }
   }, []);
 
-  // ── Live transcription progress (polls backend while Whisper runs) ──────────
-  const [transcriptProgress, setTranscriptProgress] = useState(null); // { segments, audio_pos }
-  const pendingVideoId = useRef(null); // video_id assigned BEFORE transcript completes
+  const [transcriptProgress, setTranscriptProgress] = useState(null);
+  const pendingVideoId = useRef(null);
 
   // ── Loaders ───────────────────────────────────────────────────────────────
 
@@ -157,7 +178,6 @@ export default function TranscriptPage() {
     }
   }, [overallSummary, isLoadingSummary]);
 
-  // Fetch summary if activeTopicIdx is -1 and topics have finished processing
   useEffect(() => {
     const videoId = transcriptData?.video_id;
     if (!videoId || isProcessingTopics) return;
@@ -171,12 +191,10 @@ export default function TranscriptPage() {
     if (!videoId || topics.length === 0) return;
     const total = topics.length;
 
-    // Load current topic immediately
     loadNotes(videoId, activeTopicIdx, total);
     loadCards(videoId, activeTopicIdx, total);
     loadQuiz(videoId, activeTopicIdx, total);
 
-    // Pre-load ahead (notes first since they're highest priority)
     for (let a = 1; a <= PRELOAD_AHEAD; a++) {
       const next = activeTopicIdx + a;
       if (next < total) {
@@ -190,7 +208,6 @@ export default function TranscriptPage() {
     }
   }, [activeTopicIdx, transcriptData, topics, loadNotes, loadCards, loadQuiz]);
 
-  // Poll /transcript/progress while transcribing an MP4
   useEffect(() => {
     if (!isProcessingTranscript || !pendingVideoId.current) return;
     const vid = pendingVideoId.current;
@@ -204,14 +221,13 @@ export default function TranscriptPage() {
           }
           if (prog.done) clearInterval(interval);
         }
-      } catch (_) { /* backend not ready yet */ }
+      } catch (_) {}
     }, 2000);
     return () => clearInterval(interval);
   }, [isProcessingTranscript]);
 
-  // ── Reset ─────────────────────────────────────────────────────────────────
-
   const resetAll = () => {
+    clearTranscriptCache();
     setTranscriptData(null); setTopics([]); setActiveTopicIdx(-1);
     setNotes([]); setFlashcards([]); setQuiz([]);
     setOverallSummary(null); setIsLoadingSummary(false);
@@ -222,21 +238,22 @@ export default function TranscriptPage() {
     pendingVideoId.current = null;
   };
 
+  const handleTopicSelect = (idx) => {
+    setActiveTopicIdx(idx);
+    saveTranscriptCache(transcriptData, topics, idx);
+  };
+
   const handleSubmit = async (params) => {
     resetAll();
-    setLocalVideoUrl(null);  // clear any old blob
+    setLocalVideoUrl(null);
     if (params.errorOverride) { setError(params.errorOverride); return; }
     if (params.triggerValidationOnly) { setError('Unsupported file.'); return; }
 
-    // Instantly create a blob URL so the video player shows while processing
     if (params.file) {
       setLocalVideoUrl(URL.createObjectURL(params.file));
     }
 
-    // Pre-generate a video_id for MP4 uploads so progress polling starts immediately
-    const preVideoId = params.file
-      ? crypto.randomUUID()
-      : null;
+    const preVideoId = params.file ? crypto.randomUUID() : null;
     if (preVideoId) pendingVideoId.current = preVideoId;
 
     setIsProcessingTranscript(true);
@@ -255,8 +272,9 @@ export default function TranscriptPage() {
           const processed = await processVideo(data.video_id);
           const loadedTopics = processed.topics || [];
           setTopics(loadedTopics);
-          setActiveTopicIdx(-1);
+          setActiveTopicIdx(loadedTopics.length ? 0 : -1);
           saveSession(data.video_id, loadedTopics);
+          saveTranscriptCache(data, loadedTopics, loadedTopics.length ? 0 : -1);
         } catch (e) {
           setError(e.message || 'Topic extraction failed.');
         } finally {
@@ -274,43 +292,52 @@ export default function TranscriptPage() {
   const isLoadingNotes = !!loadingNotes[activeTopicIdx];
   const isLoadingFlashcards = !!loadingCards[activeTopicIdx];
   const isLoadingQuiz = !!loadingQuiz[activeTopicIdx];
-  const anyBackgroundLoading = Object.values(loadingNotes).some(Boolean) ||
-    Object.values(loadingCards).some(Boolean) || Object.values(loadingQuiz).some(Boolean);
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B0B0B] text-slate-900 dark:text-[#F5F5F5] flex flex-col items-center justify-start px-4 py-10 sm:px-6 md:py-14 transition-colors duration-300">
-      <div className="w-full max-w-5xl flex flex-col space-y-8">
+    <div className="min-h-screen bg-[#F1F5F9] dark:bg-[#0B0B0B] text-slate-900 dark:text-[#F5F5F5] flex flex-col items-center justify-start px-4 py-8 sm:px-6 md:py-12 transition-colors duration-300">
+      <div className="w-full max-w-6xl flex flex-col space-y-8">
 
-        {/* Top Middle Theme Toggle & Header */}
+        {/* Top Header & Theme Toggle */}
         <div className="flex flex-col items-center text-center space-y-3">
           <ThemeToggle />
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900 dark:text-[#F5F5F5] select-none">
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tight text-slate-900 dark:text-[#F5F5F5] select-none">
             LearnForge AI
           </h1>
-          <p className="text-sm text-slate-500 dark:text-[#A3A3A3] max-w-lg mx-auto font-medium">
-            Transform educational videos into structured study guides
+          <p className="text-sm font-semibold text-slate-600 dark:text-[#A3A3A3] max-w-lg mx-auto">
+            Transform educational videos into interactive study guides
           </p>
-          <div className="flex items-center justify-center gap-3 pt-1">
+
+          {/* Action Pills */}
+          <div className="flex items-center justify-center gap-3 pt-2">
             <button
               onClick={() => navigate('/dashboard')}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-slate-600 dark:text-[#737373] bg-white dark:bg-transparent border border-slate-200 dark:border-[#262626] rounded-full hover:border-indigo-500 dark:hover:border-[#7C3AED]/40 hover:text-indigo-600 dark:hover:text-[#7C3AED] shadow-sm transition-all"
+              className="flex items-center gap-2 px-5 py-2 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 dark:bg-[#7C3AED] dark:hover:bg-[#6D28D9] rounded-xl shadow-md transition-all cursor-pointer"
             >
-              📊 Dashboard
+              📊 Analytics Dashboard
             </button>
+            {transcriptData && (
+              <button
+                onClick={resetAll}
+                className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-slate-700 dark:text-[#A3A3A3] bg-white dark:bg-[#111] border-2 border-slate-300 dark:border-[#262626] rounded-xl hover:border-indigo-500 hover:text-indigo-600 dark:hover:text-white shadow-sm transition-all cursor-pointer"
+              >
+                ➕ Process Another Video
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Upload */}
-        <UploadBox
-          onSubmit={handleSubmit}
-          isProcessing={isProcessingTranscript || isProcessingTopics}
-          error={error}
-          onClearError={() => setError(null)}
-        />
+        {/* Upload Box (Shown when no active transcript is loaded) */}
+        {!transcriptData && !isProcessingTranscript && !isProcessingTopics && (
+          <UploadBox
+            onSubmit={handleSubmit}
+            isProcessing={isProcessingTranscript || isProcessingTopics}
+            error={error}
+            onClearError={() => setError(null)}
+          />
+        )}
 
         {isProcessingTranscript && <LoadingState phase="transcript" progress={transcriptProgress} />}
         {isProcessingTopics && <LoadingState phase="topics" />}
-        {/* TopicProcessor only for error display */}
         {!isProcessingTopics && <TopicProcessor isProcessing={false} error={null} />}
 
         {/* Main study panel */}
@@ -319,14 +346,13 @@ export default function TranscriptPage() {
 
             {/* Video Player */}
             {(localVideoUrl || transcriptData?.youtube_video_id || (videoId && !transcriptData?.youtube_video_id)) && (
-              <div ref={videoWrapperRef} className="w-full max-w-3xl mx-auto mb-4 relative">
-                {/* When floating in PiP, render a subtle placeholder to preserve layout height */}
+              <div ref={videoWrapperRef} className="w-full max-w-4xl mx-auto mb-4 relative">
                 {isPiP && !dismissPiP && (
-                  <div className="w-full h-[360px] rounded-xl border border-dashed border-[#262626] bg-[#0d0d0d] flex flex-col items-center justify-center gap-2 text-xs text-[#525252]">
+                  <div className="w-full h-[360px] rounded-2xl border-2 border-dashed border-slate-300 dark:border-[#262626] bg-slate-100 dark:bg-[#0d0d0d] flex flex-col items-center justify-center gap-2 text-xs font-bold text-slate-600 dark:text-[#525252]">
                     <span>🎬 Video playing in mini player below</span>
                     <button
                       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                      className="px-2.5 py-1 text-[11px] text-purple-400 bg-purple-500/10 border border-purple-500/20 rounded-md hover:bg-purple-500/20 transition-all"
+                      className="px-3 py-1.5 text-[11px] font-extrabold text-indigo-700 bg-indigo-100 dark:text-purple-400 dark:bg-purple-500/10 border border-indigo-300 dark:border-purple-500/20 rounded-lg hover:bg-indigo-200 transition-all cursor-pointer"
                     >
                       Scroll to Top
                     </button>
@@ -336,29 +362,26 @@ export default function TranscriptPage() {
                 <div
                   className={
                     isPiP && !dismissPiP
-                      ? "fixed bottom-6 left-6 z-50 w-80 sm:w-96 bg-[#0a0a0a] rounded-2xl overflow-hidden border border-[#7C3AED]/50 shadow-[0_20px_50px_rgba(124,58,237,0.35)] transition-all duration-300 flex flex-col"
-                      : "w-full bg-black rounded-xl overflow-hidden border border-[#2a2a2a] shadow-lg flex flex-col justify-center transition-all"
+                      ? "fixed bottom-6 left-6 z-50 w-80 sm:w-96 bg-white dark:bg-[#0a0a0a] rounded-2xl overflow-hidden border-2 border-indigo-500 dark:border-[#7C3AED]/50 shadow-2xl shadow-indigo-500/30 transition-all duration-300 flex flex-col"
+                      : "w-full bg-black rounded-2xl overflow-hidden border-2 border-slate-300 dark:border-[#2a2a2a] shadow-xl flex flex-col justify-center transition-all"
                   }
                 >
-                  {/* Floating Mini Player Controls Header */}
                   {isPiP && !dismissPiP && (
-                    <div className="flex items-center justify-between px-3 py-1.5 bg-[#141414] border-b border-[#262626]">
-                      <span className="flex items-center gap-1.5 text-purple-400 font-medium text-[11px]">
-                        <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                    <div className="flex items-center justify-between px-3 py-1.5 bg-slate-100 dark:bg-[#141414] border-b border-slate-200 dark:border-[#262626]">
+                      <span className="flex items-center gap-1.5 text-indigo-700 dark:text-purple-400 font-extrabold text-[11px]">
+                        <span className="w-2 h-2 rounded-full bg-indigo-600 dark:bg-purple-500 animate-pulse" />
                         Mini Player
                       </span>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                          title="Scroll to Top"
-                          className="text-[10px] text-neutral-300 hover:text-white px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 transition-colors"
+                          className="text-[10px] text-indigo-600 dark:text-[#A3A3A3] hover:underline font-bold"
                         >
-                          ⬆ Top
+                          Expand
                         </button>
                         <button
                           onClick={() => setDismissPiP(true)}
-                          title="Minimize mini player"
-                          className="text-neutral-400 hover:text-red-400 transition-colors font-bold px-1 text-xs"
+                          className="text-[11px] text-slate-500 dark:text-[#525252] hover:text-slate-900 dark:hover:text-white font-bold"
                         >
                           ✕
                         </button>
@@ -366,82 +389,51 @@ export default function TranscriptPage() {
                     </div>
                   )}
 
-                  {transcriptData?.youtube_video_id ? (
+                  {localVideoUrl ? (
+                    <video
+                      ref={videoRef}
+                      src={localVideoUrl}
+                      controls
+                      className="w-full aspect-video object-contain bg-black"
+                    />
+                  ) : transcriptData?.youtube_video_id ? (
                     <iframe
-                      src={`https://www.youtube.com/embed/${transcriptData.youtube_video_id}?enablejsapi=1`}
+                      src={`https://www.youtube.com/embed/${transcriptData.youtube_video_id}`}
+                      title={transcriptData.title || "YouTube Video"}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
-                      style={{ width: '100%', aspectRatio: '16/9', border: 'none' }}
+                      className="w-full aspect-video border-none"
                     />
                   ) : (
                     <video
                       ref={videoRef}
-                      src={localVideoUrl || (videoId ? getVideoUrl(videoId) : '')}
+                      src={getVideoUrl(videoId)}
                       controls
-                      preload="metadata"
-                      style={{ width: '100%', display: 'block', background: '#000' }}
+                      className="w-full aspect-video object-contain bg-black"
                     />
                   )}
                 </div>
               </div>
             )}
 
-            {/* Toolbar */}
-            <div className="flex items-center justify-end gap-2">
-              {anyBackgroundLoading && (
-                <span className="flex items-center gap-1.5 text-[10px] text-emerald-400/60 mr-auto">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Loading remaining topics in background…
-                </span>
-              )}
-              {videoId && (
-                <button
-                  onClick={() => navigate('/dashboard')}
-                  className="px-3 py-1.5 text-xs font-medium text-[#737373] border border-[#262626] rounded-lg hover:border-[#7C3AED]/40 hover:text-[#7C3AED] transition-all"
-                >
-                  📊 Dashboard
-                </button>
-              )}
-              {videoId && (
-                <button
-                  onClick={() => setShowDebug(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono text-amber-400/60 border border-amber-400/20 rounded-lg bg-amber-400/5 hover:bg-amber-400/10 hover:text-amber-400 transition-all"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  Debug
-                </button>
-              )}
-            </div>
-
             {/* Mobile topic dropdown */}
-            {topics.length > 0 && (
-              <div className="md:hidden">
-                <TopicDropdown topics={topics} activeTopicIdx={activeTopicIdx} onTopicClick={setActiveTopicIdx} />
-              </div>
-            )}
+            <TopicDropdown
+              topics={topics}
+              activeTopicIdx={activeTopicIdx}
+              onSelectTopic={handleTopicSelect}
+            />
 
-            {/* Panel */}
-            <div className="w-full flex flex-col bg-white dark:bg-[#111111] border border-slate-200 dark:border-[#1e1e1e] rounded-2xl overflow-hidden shadow-xl shadow-slate-200/50 dark:shadow-2xl transition-colors duration-300">
-              {/* Column header */}
-              {topics.length > 0 && (
-                <div className="hidden md:flex items-center border-b border-slate-200 dark:border-[#1e1e1e] text-[10px] font-bold tracking-widest text-slate-400 dark:text-[#404040] uppercase bg-slate-50 dark:bg-[#0B0B0B]/40">
-                  <div className="w-[280px] shrink-0 border-r border-slate-200 dark:border-[#1e1e1e] px-5 py-3">Topics</div>
-                  <div className="flex-1 px-5 py-3">Study Space</div>
-                </div>
-              )}
+            {/* 2-Column layout: Sidebar + Study Space */}
+            <div className="flex gap-6 items-start">
+              <TopicSidebar
+                topics={topics}
+                activeTopicIdx={activeTopicIdx}
+                onSelectTopic={handleTopicSelect}
+                overallSummary={overallSummary}
+                isLoadingSummary={isLoadingSummary}
+              />
 
-              <div className="flex">
-                {topics.length > 0 && (
-                  <div className="hidden md:block">
-                    <TopicSidebar
-                      topics={topics}
-                      activeTopicIdx={activeTopicIdx}
-                      onTopicClick={setActiveTopicIdx}
-                      videoId={videoId}
-                    />
-                  </div>
-                )}
-
+              <div className="flex-1 bg-white dark:bg-[#111111] border-2 border-slate-300 dark:border-[#262626] rounded-3xl p-6 shadow-xl shadow-slate-200/50 dark:shadow-2xl">
                 <TranscriptViewer
                   topics={topics}
                   activeTopicIdx={activeTopicIdx}
@@ -456,7 +448,7 @@ export default function TranscriptPage() {
                   videoId={videoId}
                   overallSummary={overallSummary}
                   isLoadingSummary={isLoadingSummary}
-                  onTopicClick={setActiveTopicIdx}
+                  onTopicClick={handleTopicSelect}
                   transcriptData={transcriptData}
                   onPlayVideo={handlePlayVideo}
                 />
@@ -471,19 +463,8 @@ export default function TranscriptPage() {
         <FloatingAI
           videoId={videoId}
           topicIndex={activeTopicIdx}
-          topicTitle={activeTopic?.title ?? ''}
+          topicTitle={activeTopic?.title ?? (activeTopicIdx === -1 ? 'Full Video' : '')}
         />
-      )}
-
-      {/* Debug overlay */}
-      {showDebug && videoId && (
-        <div className="fixed inset-0 z-50">
-          <DebugViewer videoId={videoId} />
-          <button
-            onClick={() => setShowDebug(false)}
-            className="fixed top-4 right-4 z-[60] px-3 py-1.5 text-xs font-semibold bg-[#1a1a1a] border border-[#404040] rounded-lg text-[#A3A3A3] hover:text-[#F5F5F5] transition-all"
-          >✕ Close</button>
-        </div>
       )}
     </div>
   );
