@@ -599,6 +599,17 @@ async def generate_transcript(
     return payload
 
 
+@app.get("/transcript/cached/{video_id}")
+async def get_cached_transcript(video_id: str):
+    """Fetch cached transcript data for a video_id."""
+    video_dir = os.path.join(STORAGE_DIR, video_id)
+    transcript_path = os.path.join(video_dir, "transcript.json")
+    if not os.path.exists(transcript_path):
+        raise HTTPException(status_code=404, detail="Transcript not found.")
+    with open(transcript_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 @app.get("/transcript/progress/{video_id}")
 async def get_transcription_progress(video_id: str):
     """
@@ -614,6 +625,7 @@ async def get_transcription_progress(video_id: str):
         "audio_pos": prog["audio_pos"],
         "done": prog["done"],
     }
+
 
 
 _active_prefetches = set()

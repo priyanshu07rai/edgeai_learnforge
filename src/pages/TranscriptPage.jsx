@@ -23,6 +23,14 @@ function getTranscriptCache() {
   } catch { return null; }
 }
 
+function getSession() {
+  try {
+    const raw = sessionStorage.getItem('lf_session');
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+
 function saveTranscriptCache(data, topicsList, activeIdx = -1) {
   try {
     sessionStorage.setItem(TRANSCRIPT_CACHE_KEY, JSON.stringify({
@@ -97,6 +105,34 @@ export default function TranscriptPage() {
   useEffect(() => {
     return () => { if (localVideoUrl) URL.revokeObjectURL(localVideoUrl); };
   }, [localVideoUrl]);
+
+  // Restore session from sessionStorage on mount if state is empty but videoId exists
+  useEffect(() => {
+    const session = getSession();
+    const vid = session?.videoId;
+    if (vid && !transcriptData) {
+      setIsProcessingTranscript(true);
+      fetch(`${API_BASE}/transcript/cached/${vid}`)
+        .then(res => {
+          if (!res.ok) throw new Error('Not found');
+          return res.json();
+        })
+        .then(data => {
+          setTranscriptData(data);
+          setTopics(session.topics || []);
+          setActiveTopicIdx(session.topics?.length ? 0 : -1);
+        })
+        .catch(err => {
+          console.error('[Session Restore] Failed:', err);
+          clearTranscriptCache();
+          sessionStorage.removeItem('lf_session');
+        })
+        .finally(() => {
+          setIsProcessingTranscript(false);
+        });
+    }
+  }, []);
+
 
   const handlePlayVideo = useCallback((timeSecs) => {
     if (videoWrapperRef.current) {
