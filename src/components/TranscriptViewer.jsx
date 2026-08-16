@@ -662,7 +662,7 @@ export default function TranscriptViewer({
   const renderQuiz = () => {
     if (isLoadingQuiz) return <Spinner msg="Building assessment quiz…" />;
     const quizObj = quiz[activeTopicIdx];
-    const questions = quizObj?.questions ?? [];
+    const questions = quizObj?.quiz ?? quizObj?.questions ?? (Array.isArray(quizObj) ? quizObj : []);
     if (!questions.length) return <Empty msg="Quiz loading…" />;
 
     const total = questions.length;
