@@ -12,7 +12,7 @@ html.dark {
 }
 
 html.light body {
-  background-color: #F8FAFC !important;
+  background-color: #F1F5F9 !important; /* Soft slate 100 background for rich contrast */
   color: #0F172A !important;
 }
 
@@ -28,14 +28,15 @@ body {
 
 /* Light Mode Overrides for brand dark components */
 html.light .bg-\[\#0B0B0B\] {
-  background-color: #F8FAFC !important;
+  background-color: #F1F5F9 !important;
   color: #0F172A !important;
 }
 
 html.light .bg-\[\#111111\] {
   background-color: #FFFFFF !important;
-  border-color: #E2E8F0 !important;
+  border-color: #CBD5E1 !important;
   color: #0F172A !important;
+  box-shadow: 0 10px 25px -5px rgba(148, 163, 184, 0.25), 0 8px 10px -6px rgba(148, 163, 184, 0.2) !important;
 }
 
 html.light .text-\[\#F5F5F5\] {
@@ -43,18 +44,109 @@ html.light .text-\[\#F5F5F5\] {
 }
 
 html.light .text-\[\#A3A3A3\] {
-  color: #64748B !important;
+  color: #475569 !important;
 }
 
 html.light .text-\[\#737373\] {
-  color: #475569 !important;
+  color: #334155 !important;
 }
 
 html.light .border-\[\#262626\], 
 html.light .border-\[\#1e1e1e\], 
 html.light .border-\[\#2a2a2a\] {
-  border-color: #E2E8F0 !important;
+  border-color: #CBD5E1 !important;
 }
+
+/* ── Markdown & Study Notes Typography ─────────────────────────────────────── */
+
+.md-h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95rem;
+  font-weight: 800;
+  margin: 28px 0 10px;
+  letter-spacing: 0.02em;
+}
+html.dark .md-h3 { color: #c4b5fd; }
+html.light .md-h3 { color: #4338CA !important; }
+
+.md-h2 {
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin: 32px 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid;
+}
+html.dark .md-h2 { color: #f8fafc; border-color: #1e1e2e; }
+html.light .md-h2 { color: #0F172A !important; border-color: #CBD5E1; }
+
+.md-strong {
+  font-weight: 700;
+}
+html.dark .md-strong { color: #f8fafc; }
+html.light .md-strong { color: #0F172A !important; }
+
+.md-p {
+  margin: 10px 0;
+  font-size: 0.9rem;
+  line-height: 1.75;
+  font-weight: 500;
+}
+html.dark .md-p { color: #d4d4d4; }
+html.light .md-p { color: #0F172A !important; }
+
+.md-li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 6px 0;
+  font-size: 0.88rem;
+  line-height: 1.7;
+  font-weight: 500;
+}
+html.dark .md-li { color: #d4d4d4; }
+html.light .md-li { color: #0F172A !important; }
+
+.md-code {
+  font-family: monospace;
+  font-size: 0.84em;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px solid;
+  font-weight: 600;
+}
+html.dark .md-code { background: #141420; border-color: #2a2a3e; color: #a78bfa; }
+html.light .md-code { background: #EEF2FF; border-color: #C7D2FE; color: #3730A3 !important; }
+
+/* Callout Cards in Study Notes */
+.callout-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 10px 0;
+  border-left: 4px solid;
+  border-radius: 0 10px 10px 0;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  font-weight: 600;
+}
+
+html.dark .callout-warning { background: #1a0a0a; border-color: #ef4444; color: #fca5a5; }
+html.light .callout-warning { background: #FEF2F2; border-color: #EF4444; color: #991B1B !important; }
+
+html.dark .callout-analogy { background: #0a1a18; border-color: #14b8a6; color: #99f6e4; }
+html.light .callout-analogy { background: #F0FDFA; border-color: #0D9488; color: #115E59 !important; }
+
+html.dark .callout-example { background: #0a180a; border-color: #22c55e; color: #86efac; }
+html.light .callout-example { background: #F0FDF4; border-color: #16A34A; color: #166534 !important; }
+
+html.dark .callout-takeaway { background: #0a0a18; border-color: #6366f1; color: #a5b4fc; }
+html.light .callout-takeaway { background: #EEF2FF; border-color: #4F46E5; color: #1E1B4B !important; }
+
+html.dark .callout-question { background: #18100a; border-color: #f59e0b; color: #fde68a; }
+html.light .callout-question { background: #FFFBEB; border-color: #D97706; color: #78350F !important; }
 
 /* Custom minimal scrollbar */
 .custom-scrollbar::-webkit-scrollbar {

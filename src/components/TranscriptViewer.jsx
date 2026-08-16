@@ -37,69 +37,70 @@ const parseMarkdown = (markdown) => {
     .replace(/>/g, '&gt;');
 
   // ── Headers ────────────────────────────────────────────────────────────────
+  // ── Headers ────────────────────────────────────────────────────────────────
   // H3 → styled section heading with left accent bar
   html = html.replace(/^###\s+(.*$)/gim,
-    '<h4 style="display:flex;align-items:center;gap:10px;font-size:0.85rem;font-weight:700;color:#c4b5fd;margin:28px 0 10px;letter-spacing:0.02em;" data-heading="$1">'
-    + '<span style="display:inline-block;width:3px;height:16px;background:linear-gradient(to bottom,#7c3aed,#a855f7);border-radius:2px;flex-shrink:0;"></span>$1</h4>'
+    '<h4 class="md-h3" data-heading="$1">'
+    + '<span style="display:inline-block;width:4px;height:18px;background:linear-gradient(to bottom,#4f46e5,#9333ea);border-radius:2px;flex-shrink:0;"></span>$1</h4>'
   );
   // H2 → bold section break
   html = html.replace(/^##\s+(.*$)/gim,
-    '<h3 style="font-size:1rem;font-weight:800;color:#e2e8f0;margin:36px 0 12px;padding-bottom:8px;border-bottom:1px solid #1e1e2e;">$1</h3>'
+    '<h3 class="md-h2">$1</h3>'
   );
   // H1 → large title
   html = html.replace(/^#\s+(.*$)/gim,
-    '<h2 style="font-size:1.2rem;font-weight:800;color:#f8fafc;margin:40px 0 14px;">$1</h2>'
+    '<h2 class="md-h2" style="font-size:1.25rem;">$1</h2>'
   );
 
   // ── Inline formatting ──────────────────────────────────────────────────────
   // Bold
   html = html.replace(/\*\*(.*?)\*\*/g,
-    '<strong style="font-weight:700;color:#e2e8f0;">$1</strong>'
+    '<strong class="md-strong">$1</strong>'
   );
   // Italic
   html = html.replace(/\*(.*?)\*/g,
-    '<em style="font-style:italic;color:#94a3b8;">$1</em>'
+    '<em style="font-style:italic;opacity:0.85;">$1</em>'
   );
   // Inline code
   html = html.replace(/`(.*?)`/g,
-    '<code style="font-family:monospace;font-size:0.8em;padding:2px 7px;background:#141420;border:1px solid #2a2a3e;border-radius:5px;color:#a78bfa;">$1</code>'
+    '<code class="md-code">$1</code>'
   );
 
   // ── Code blocks ────────────────────────────────────────────────────────────
   // Fenced code block with language tag
   html = html.replace(/```([a-zA-Z]*)\n([\s\S]*?)```/g, (match, lang, codeContent) => {
     const langLabel = lang
-      ? `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:#0d0d1a;border-bottom:1px solid #1e1e2e;"><span style="font-size:0.68rem;font-family:monospace;font-weight:600;color:#7c3aed;text-transform:uppercase;letter-spacing:0.1em;">${lang}</span><span style="font-size:0.65rem;color:#333;font-family:monospace;">code</span></div>`
+      ? `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:rgba(0,0,0,0.05);border-bottom:1px solid rgba(0,0,0,0.1);"><span style="font-size:0.68rem;font-family:monospace;font-weight:700;color:#6366f1;text-transform:uppercase;letter-spacing:0.1em;">${lang}</span><span style="font-size:0.65rem;font-family:monospace;opacity:0.6;">code</span></div>`
       : '';
-    return `<div style="margin:16px 0;border-radius:10px;overflow:hidden;border:1px solid #1e1e2e;background:#0d0d18;">${langLabel}<pre style="padding:14px 16px;overflow-x:auto;margin:0;"><code style="font-family:'JetBrains Mono',Consolas,monospace;font-size:0.78rem;color:#d4d4d4;white-space:pre;">${codeContent.trimEnd()}</code></pre></div>`;
+    return `<div style="margin:16px 0;border-radius:10px;overflow:hidden;border:1px solid rgba(100,116,139,0.2);" class="bg-slate-900 text-slate-100 dark:bg-slate-950">${langLabel}<pre style="padding:14px 16px;overflow-x:auto;margin:0;"><code style="font-family:'JetBrains Mono',Consolas,monospace;font-size:0.8rem;white-space:pre;">${codeContent.trimEnd()}</code></pre></div>`;
   });
   // Fallback code block (no language tag)
   html = html.replace(/```([\s\S]*?)```/g, (match, codeContent) => {
-    return `<div style="margin:16px 0;border-radius:10px;overflow:hidden;border:1px solid #1e1e2e;background:#0d0d18;"><pre style="padding:14px 16px;overflow-x:auto;margin:0;"><code style="font-family:'JetBrains Mono',Consolas,monospace;font-size:0.78rem;color:#d4d4d4;white-space:pre;">${codeContent.trimEnd()}</code></pre></div>`;
+    return `<div style="margin:16px 0;border-radius:10px;overflow:hidden;border:1px solid rgba(100,116,139,0.2);" class="bg-slate-900 text-slate-100 dark:bg-slate-950"><pre style="padding:14px 16px;overflow-x:auto;margin:0;"><code style="font-family:'JetBrains Mono',Consolas,monospace;font-size:0.8rem;white-space:pre;">${codeContent.trimEnd()}</code></pre></div>`;
   });
 
   // ── Horizontal Rule ────────────────────────────────────────────────────────
   html = html.replace(/^---\s*$/gim,
-    '<hr style="margin:24px 0;border:none;border-top:1px solid #1e1e2e;" />'
+    '<hr style="margin:24px 0;border:none;border-top:1px solid rgba(100,116,139,0.2);" />'
   );
 
   // ── List items ─────────────────────────────────────────────────────────────
   // Nested bullets (indented)
   html = html.replace(/^(?: {2,}|\t)[*-]\s+(.*$)/gim,
-    '<li class="_nested_li" style="display:flex;align-items:baseline;gap:10px;margin:4px 0 4px 20px;font-size:0.8rem;color:#94a3b8;line-height:1.65;"><span style="width:5px;height:5px;border-radius:50%;background:#4c1d95;flex-shrink:0;margin-top:7px;"></span><span>$1</span></li>'
+    '<li class="md-li _nested_li" style="margin-left:20px;"><span style="width:5px;height:5px;border-radius:50%;background:#6366f1;flex-shrink:0;margin-top:7px;"></span><span>$1</span></li>'
   );
   // Top-level bullets (asterisk)
   html = html.replace(/^[*]\s+(.*$)/gim,
-    '<li class="_top_li" style="display:flex;align-items:baseline;gap:10px;margin:6px 0;font-size:0.85rem;color:#d4d4d4;line-height:1.7;"><span style="width:6px;height:6px;border-radius:50%;background:#7c3aed;flex-shrink:0;margin-top:8px;"></span><span>$1</span></li>'
+    '<li class="md-li _top_li"><span style="width:6px;height:6px;border-radius:50%;background:#4f46e5;flex-shrink:0;margin-top:8px;"></span><span>$1</span></li>'
   );
   // Top-level bullets (dash)
   html = html.replace(/^-\s+(.*$)/gim,
-    '<li class="_top_li" style="display:flex;align-items:baseline;gap:10px;margin:6px 0;font-size:0.85rem;color:#d4d4d4;line-height:1.7;"><span style="width:6px;height:6px;border-radius:50%;background:#7c3aed;flex-shrink:0;margin-top:8px;"></span><span>$1</span></li>'
+    '<li class="md-li _top_li"><span style="width:6px;height:6px;border-radius:50%;background:#4f46e5;flex-shrink:0;margin-top:8px;"></span><span>$1</span></li>'
   );
   // Ordered list items
   let olCounter = 0;
   html = html.replace(/^(\d+)\.\s+(.*$)/gim, (match, num, content) => {
-    return `<li style="display:flex;align-items:baseline;gap:10px;margin:6px 0;font-size:0.85rem;color:#d4d4d4;line-height:1.7;"><span style="min-width:22px;height:22px;border-radius:50%;background:#1e1e2e;border:1px solid #2a2a3e;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;color:#7c3aed;flex-shrink:0;">${num}</span><span>${content}</span></li>`;
+    return `<li class="md-li"><span style="min-width:22px;height:22px;border-radius:50%;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800;color:#4f46e5;flex-shrink:0;">${num}</span><span>${content}</span></li>`;
   });
 
   // ── Table parsing ──────────────────────────────────────────────────────────
@@ -120,16 +121,16 @@ const parseMarkdown = (markdown) => {
         if (cols.length > 0) bodyRows.push(cols);
       }
     }
-    let t = '<div style="overflow-x:auto;margin:16px 0;border:1px solid #1e1e2e;border-radius:10px;"><table style="min-width:100%;border-collapse:collapse;font-size:0.82rem;">';
+    let t = '<div style="overflow-x:auto;margin:16px 0;border:1px solid rgba(100,116,139,0.2);border-radius:10px;"><table style="min-width:100%;border-collapse:collapse;font-size:0.84rem;">';
     if (hasHeader && headerCols.length > 0) {
-      t += '<thead style="background:#141420;"><tr>';
-      headerCols.forEach(col => { t += `<th style="padding:10px 14px;text-align:left;font-weight:600;color:#a78bfa;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #1e1e2e;">${col}</th>`; });
+      t += '<thead class="bg-indigo-50 dark:bg-slate-900"><tr>';
+      headerCols.forEach(col => { t += `<th style="padding:10px 14px;text-align:left;font-weight:700;font-size:0.78rem;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid rgba(100,116,139,0.2);">${col}</th>`; });
       t += '</tr></thead>';
     }
     t += '<tbody>';
     bodyRows.forEach((row, ri) => {
-      t += `<tr style="background:${ri % 2 === 0 ? '#0c0c14' : '#101018'};">` ;
-      row.forEach(col => { t += `<td style="padding:9px 14px;color:#c4c4d4;border-bottom:1px solid #1a1a2a;">${col}</td>`; });
+      t += `<tr class="${ri % 2 === 0 ? 'bg-white dark:bg-slate-900/60' : 'bg-slate-50 dark:bg-slate-900/30'}">`;
+      row.forEach(col => { t += `<td style="padding:9px 14px;border-bottom:1px solid rgba(100,116,139,0.15);">${col}</td>`; });
       t += '</tr>';
     });
     t += '</tbody></table></div>';
@@ -154,22 +155,17 @@ const parseMarkdown = (markdown) => {
   html = parsedLines.join('\n');
 
   // ── Paragraph wrapping ─────────────────────────────────────────────────────
-  // Track heading context for section-aware callout styling
   let currentHeadingLower = '';
   const finalLines = html.split('\n');
   const processed = finalLines.map(line => {
     const trimmed = line.trim();
     if (!trimmed) return '';
 
-    // Track heading context
     const headingMatch = trimmed.match(/data-heading="([^"]+)"/);
     if (headingMatch) {
       currentHeadingLower = headingMatch[1].toLowerCase();
     }
-    const isHeading3 = trimmed.includes('data-heading=');
-    const isH2orH3el = trimmed.startsWith('<h2') || trimmed.startsWith('<h3') || isHeading3;
 
-    // Already HTML — pass through
     if (trimmed.startsWith('<h') || trimmed.startsWith('<li') || trimmed.startsWith('<pre') ||
         trimmed.startsWith('<code') || trimmed.startsWith('</pre') || trimmed.startsWith('</code') ||
         trimmed.startsWith('<hr') || trimmed.startsWith('<table') || trimmed.startsWith('<thead') ||
@@ -180,7 +176,7 @@ const parseMarkdown = (markdown) => {
       return line;
     }
 
-    // Section-aware callout cards for special content types
+    // Section-aware callout cards
     const isWarning   = /warning|mistake|pitfall|avoid|caution|error|don.?t/i.test(currentHeadingLower);
     const isAnalogy   = /analogy|imagine|think of|real.world|like a/i.test(currentHeadingLower);
     const isExample   = /example|use case|demo|illustrat/i.test(currentHeadingLower);
@@ -188,24 +184,25 @@ const parseMarkdown = (markdown) => {
     const isQuestion  = /concept check|review|interview|question/i.test(currentHeadingLower);
 
     if (isWarning) {
-      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;margin:5px 0;background:#1a0a0a;border-left:3px solid #ef4444;border-radius:0 8px 8px 0;font-size:0.84rem;color:#fca5a5;line-height:1.65;">⚠️ <span>${trimmed}</span></div>`;
+      return `<div class="callout-card callout-warning">⚠️ <span>${trimmed}</span></div>`;
     }
     if (isAnalogy) {
-      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;margin:5px 0;background:#0a1a18;border-left:3px solid #14b8a6;border-radius:0 8px 8px 0;font-size:0.84rem;color:#99f6e4;line-height:1.65;">💡 <span>${trimmed}</span></div>`;
+      return `<div class="callout-card callout-analogy">💡 <span>${trimmed}</span></div>`;
     }
     if (isExample) {
-      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;margin:5px 0;background:#0a180a;border-left:3px solid #22c55e;border-radius:0 8px 8px 0;font-size:0.84rem;color:#86efac;line-height:1.65;">🧪 <span>${trimmed}</span></div>`;
+      return `<div class="callout-card callout-example">🧪 <span>${trimmed}</span></div>`;
     }
     if (isTakeaway) {
-      return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;margin:5px 0;background:#0a0a18;border-left:3px solid #6366f1;border-radius:0 8px 8px 0;font-size:0.84rem;color:#a5b4fc;line-height:1.65;">⚡ <span>${trimmed}</span></div>`;
+      return `<div class="callout-card callout-takeaway">⚡ <span>${trimmed}</span></div>`;
     }
     if (isQuestion) {
-      return `<div style="padding:10px 14px;margin:8px 0;background:#1a150a;border:1px solid #92400e40;border-radius:8px;font-size:0.84rem;color:#fcd34d;line-height:1.65;">💬 ${trimmed}</div>`;
+      return `<div class="callout-card callout-question">💬 <span>${trimmed}</span></div>`;
     }
 
     // Regular paragraph
-    return `<p style="font-size:0.875rem;color:#c8c8d8;line-height:1.8;margin:0 0 10px;">${line}</p>`;
+    return `<p class="md-p">${line}</p>`;
   });
+
 
   let result = processed.filter(Boolean).join('\n');
 
@@ -315,38 +312,39 @@ export default function TranscriptViewer({
       return (
         <div className="select-text overflow-y-auto">
           {/* Topic header */}
-          <div style={{ padding: '28px 32px 20px', borderBottom: '1px solid #13131f' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
-              <span style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.18em', color: '#7c3aed', background: '#7c3aed18', padding: '3px 9px', borderRadius: '20px', border: '1px solid #7c3aed30' }}>Study Guide</span>
+          <div className="px-8 pt-7 pb-5 border-b border-slate-200 dark:border-[#13131f]">
+            <div className="flex items-center gap-2.5 mb-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-700 dark:text-[#7c3aed] bg-indigo-100 dark:bg-[#7c3aed18] px-2.5 py-1 rounded-full border border-indigo-300 dark:border-[#7c3aed30]">Study Guide</span>
               {note.density_badge && (
-                <span style={{ fontSize: '0.65rem', color: '#525270', fontWeight: 600 }}>{note.density_badge}</span>
+                <span className="text-[11px] text-slate-500 dark:text-[#525270] font-semibold">{note.density_badge}</span>
               )}
             </div>
-            <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f1f1f8', lineHeight: 1.3, margin: 0 }}>{note.topic}</h2>
+            <h2 className="text-2xl font-extrabold text-slate-900 dark:text-[#f1f1f8] leading-tight m-0">{note.topic}</h2>
             {summary && (
-              <p style={{ fontSize: '0.83rem', color: '#8888a8', lineHeight: 1.7, marginTop: '10px', maxWidth: '600px' }}>{summary}</p>
+              <p className="text-sm text-slate-700 dark:text-[#8888a8] leading-relaxed mt-2.5 max-w-2xl font-semibold">{summary}</p>
             )}
           </div>
 
           {/* Markdown body */}
           <div
-            style={{ padding: '24px 32px 32px', maxWidth: '780px' }}
+            className="px-8 py-7 max-w-3xl"
             dangerouslySetInnerHTML={{ __html: parseMarkdown(markdown) }}
           />
 
           {/* Key Terms pill bar */}
           {important_terms.length > 0 && (
-            <div style={{ padding: '16px 32px 28px', borderTop: '1px solid #13131f' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                <span style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.14em', color: '#525270' }}>Key Terms</span>
+            <div className="px-8 pt-4 pb-7 border-t border-slate-200 dark:border-[#13131f]">
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-[#525270]">Key Terms</span>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
+              <div className="flex flex-wrap gap-2">
                 {important_terms.map((t, i) => (
-                  <span key={i} style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 500, color: '#a78bfa', background: '#7c3aed12', border: '1px solid #7c3aed25', borderRadius: '20px', cursor: 'default' }}>{t}</span>
+                  <span key={i} className="px-3 py-1 text-xs font-bold text-indigo-900 dark:text-[#a78bfa] bg-indigo-100 dark:bg-[#7c3aed12] border border-indigo-300 dark:border-[#7c3aed25] rounded-full cursor-default">{t}</span>
                 ))}
               </div>
             </div>
           )}
+
         </div>
       );
     }
