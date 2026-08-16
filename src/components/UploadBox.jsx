@@ -79,7 +79,7 @@ export default function UploadBox({ onSubmit, isProcessing, error, onClearError 
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto rounded-2xl p-8 transition-all duration-300 bg-[#111111] dark:bg-[#111111] light:bg-white border border-[#262626] dark:border-[#262626] light:border-slate-200/80 shadow-2xl light:shadow-xl light:shadow-slate-200/50">
+    <div className="w-full max-w-3xl mx-auto rounded-2xl p-8 transition-all duration-300 bg-white dark:bg-[#111111] border border-slate-200 dark:border-[#262626] shadow-xl shadow-slate-200/50 dark:shadow-2xl">
       <form onSubmit={handleGenerate} className="space-y-6">
         {/* YouTube Input */}
         <div className="space-y-2">
@@ -90,15 +90,15 @@ export default function UploadBox({ onSubmit, isProcessing, error, onClearError 
             onChange={handleUrlChange}
             disabled={isProcessing}
             placeholder="Paste YouTube video URL..."
-            className="block w-full px-4 py-3.5 rounded-xl text-sm transition-all duration-200 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-[#7C3AED] light:focus:ring-indigo-500 bg-[#0B0B0B] dark:bg-[#0B0B0B] light:bg-slate-50 border border-[#262626] dark:border-[#262626] light:border-slate-200 text-[#F5F5F5] dark:text-[#F5F5F5] light:text-slate-900 placeholder-[#A3A3A3] light:placeholder-slate-400"
+            className="block w-full px-4 py-3.5 rounded-xl text-sm transition-all duration-200 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-[#7C3AED] bg-slate-50 dark:bg-[#0B0B0B] border border-slate-200 dark:border-[#262626] text-slate-900 dark:text-[#F5F5F5] placeholder-slate-400 dark:placeholder-[#A3A3A3]"
           />
         </div>
 
         {/* Divider */}
         <div className="relative flex py-1 items-center">
-          <div className="flex-grow border-t border-[#262626] dark:border-[#262626] light:border-slate-200"></div>
-          <span className="flex-shrink mx-4 text-xs font-semibold tracking-wider text-[#A3A3A3] light:text-slate-400 uppercase">OR</span>
-          <div className="flex-grow border-t border-[#262626] dark:border-[#262626] light:border-slate-200"></div>
+          <div className="flex-grow border-t border-slate-200 dark:border-[#262626]"></div>
+          <span className="flex-shrink mx-4 text-xs font-semibold tracking-wider text-slate-400 dark:text-[#A3A3A3] uppercase">OR</span>
+          <div className="flex-grow border-t border-slate-200 dark:border-[#262626]"></div>
         </div>
 
         {/* Drag and Drop File Upload Area */}
@@ -111,8 +111,8 @@ export default function UploadBox({ onSubmit, isProcessing, error, onClearError 
             onClick={() => !isProcessing && fileInputRef.current?.click()}
             className={`flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-xl cursor-pointer transition-all duration-200 ${
               dragActive 
-                ? 'border-[#7C3AED] bg-[#7C3AED]/10 light:border-indigo-500 light:bg-indigo-50/70' 
-                : 'border-[#262626] dark:border-[#262626] light:border-slate-300 bg-[#0B0B0B] dark:bg-[#0B0B0B] light:bg-slate-50/60 hover:border-[#7C3AED]/50 light:hover:border-indigo-400'
+                ? 'border-indigo-500 bg-indigo-50/70 dark:border-[#7C3AED] dark:bg-[#7C3AED]/10' 
+                : 'border-slate-300 dark:border-[#262626] bg-slate-50/60 dark:bg-[#0B0B0B] hover:border-indigo-400 dark:hover:border-[#7C3AED]/50'
             } ${isProcessing ? 'pointer-events-none opacity-50' : ''}`}
           >
             <input
@@ -125,23 +125,23 @@ export default function UploadBox({ onSubmit, isProcessing, error, onClearError 
 
             {!file ? (
               <div className="text-center px-4 space-y-1">
-                <svg className="w-8 h-8 mx-auto mb-2 text-[#7C3AED] light:text-indigo-500 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="w-8 h-8 mx-auto mb-2 text-indigo-500 dark:text-[#7C3AED] opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
-                <p className="text-sm font-medium text-[#F5F5F5] light:text-slate-700">
-                  Drag & drop your MP4 file here, or <span className="text-[#7C3AED] light:text-indigo-600 font-semibold underline decoration-indigo-300 underline-offset-2">browse</span>
+                <p className="text-sm font-medium text-slate-700 dark:text-[#F5F5F5]">
+                  Drag & drop your MP4 file here, or <span className="text-indigo-600 dark:text-[#7C3AED] font-semibold underline decoration-indigo-300 underline-offset-2">browse</span>
                 </p>
-                <p className="text-xs text-[#A3A3A3] light:text-slate-400">Supports video/mp4 format</p>
+                <p className="text-xs text-slate-400 dark:text-[#A3A3A3]">Supports video/mp4 format</p>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center p-4">
-                <p className="text-sm font-semibold text-[#F5F5F5] light:text-slate-800 text-center max-w-md truncate">
+                <p className="text-sm font-semibold text-slate-800 dark:text-[#F5F5F5] text-center max-w-md truncate">
                   🎬 {file.name}
                 </p>
                 <button
                   type="button"
                   onClick={removeFile}
-                  className="mt-2 text-xs text-red-400 hover:text-red-300 light:text-red-500 light:hover:text-red-600 transition-colors font-medium"
+                  className="mt-2 text-xs text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors font-medium"
                 >
                   Remove File
                 </button>
@@ -152,7 +152,7 @@ export default function UploadBox({ onSubmit, isProcessing, error, onClearError 
 
         {/* Error Display */}
         {error && (
-          <div className="p-4 bg-red-950/30 border border-red-800/40 text-red-300 light:bg-red-50 light:border-red-200 light:text-red-700 rounded-xl text-sm text-left">
+          <div className="p-4 bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-800/40 dark:text-red-300 rounded-xl text-sm text-left">
             {error}
           </div>
         )}
@@ -163,8 +163,8 @@ export default function UploadBox({ onSubmit, isProcessing, error, onClearError 
           disabled={isProcessing || (!youtubeUrl.trim() && !file)}
           className={`w-full py-3.5 px-4 rounded-xl font-semibold tracking-wide transition-all duration-300 text-sm cursor-pointer shadow-lg select-none ${
             isProcessing || (!youtubeUrl.trim() && !file)
-              ? 'bg-[#262626] dark:bg-[#262626] light:bg-slate-200 text-[#A3A3A3] light:text-slate-400 cursor-not-allowed border border-transparent'
-              : 'bg-[#7C3AED] hover:bg-[#6D28D9] light:bg-indigo-600 light:hover:bg-indigo-700 text-white hover:shadow-indigo-500/25 active:scale-[0.99]'
+              ? 'bg-slate-200 dark:bg-[#262626] text-slate-400 dark:text-[#A3A3A3] cursor-not-allowed border border-transparent'
+              : 'bg-indigo-600 hover:bg-indigo-700 dark:bg-[#7C3AED] dark:hover:bg-[#6D28D9] text-white hover:shadow-indigo-500/25 active:scale-[0.99]'
           }`}
         >
           Generate Transcript
