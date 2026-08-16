@@ -584,18 +584,18 @@ export default function TranscriptViewer({
           <div className={`relative w-full h-full transition-all duration-500 preserve-3d ${showAnswer ? 'rotate-y-180' : ''}`}>
             
             {/* Front: Question */}
-            <div className="absolute inset-0 w-full h-full backface-hidden bg-[#0c0c14] border border-[#2a2a3e] rounded-xl flex flex-col p-8 hover:border-[#7c3aed60] transition-colors shadow-lg">
+            <div className="absolute inset-0 w-full h-full backface-hidden bg-white dark:bg-[#0c0c14] border-2 border-slate-300 dark:border-[#2a2a3e] rounded-2xl flex flex-col p-8 hover:border-indigo-500 transition-all shadow-xl shadow-slate-200/50 dark:shadow-lg">
               
               <div className="flex justify-between items-start mb-6">
-                <span className="text-[10px] font-bold text-[#525270] uppercase tracking-widest bg-[#13131f] px-3 py-1 rounded-full">
+                <span className="text-[10px] font-extrabold text-slate-700 dark:text-[#525270] uppercase tracking-widest bg-slate-100 dark:bg-[#13131f] px-3 py-1 rounded-full border border-slate-300 dark:border-transparent">
                   Question
                 </span>
                 {card.type && (
-                  <span className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border ${
-                    card.type === 'conceptual' ? 'text-violet-400 bg-violet-400/10 border-violet-400/20' :
-                    card.type === 'application' ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20' :
-                    card.type === 'misconception' ? 'text-rose-400 bg-rose-400/10 border-rose-400/20' :
-                    'text-amber-400 bg-amber-400/10 border-amber-400/20'
+                  <span className={`text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full border ${
+                    card.type === 'conceptual' ? 'text-violet-700 dark:text-violet-400 bg-violet-100 dark:bg-violet-400/10 border-violet-300 dark:border-violet-400/20' :
+                    card.type === 'application' ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-400/10 border-emerald-300 dark:border-emerald-400/20' :
+                    card.type === 'misconception' ? 'text-rose-700 dark:text-rose-400 bg-rose-100 dark:bg-rose-400/10 border-rose-300 dark:border-rose-400/20' :
+                    'text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-400/10 border-amber-300 dark:border-amber-400/20'
                   }`}>
                     {card.type}
                   </span>
@@ -603,40 +603,40 @@ export default function TranscriptViewer({
               </div>
               
               <div className="flex-1 flex items-center justify-center">
-                <p className="text-center text-lg md:text-xl font-bold text-[#f1f1f8] leading-relaxed max-w-lg">
+                <p className="text-center text-lg md:text-xl font-extrabold text-slate-900 dark:text-[#f1f1f8] leading-relaxed max-w-lg">
                   {card.question}
                 </p>
               </div>
 
               {card.hint && (
-                <div className="mt-6 flex items-start gap-3 bg-[#13131f] border border-[#2a2a3e] p-3 rounded-lg">
-                  <span className="text-amber-400 text-sm">💡</span>
-                  <p className="text-xs text-[#94a3b8] italic mt-0.5">{card.hint}</p>
+                <div className="mt-6 flex items-start gap-3 bg-slate-50 dark:bg-[#13131f] border border-slate-300 dark:border-[#2a2a3e] p-3 rounded-xl">
+                  <span className="text-amber-500 text-sm">💡</span>
+                  <p className="text-xs text-slate-700 dark:text-[#94a3b8] font-medium italic mt-0.5">{card.hint}</p>
                 </div>
               )}
               
               <div className="absolute bottom-4 left-0 w-full text-center">
-                <p className="text-[10px] text-[#525270] font-semibold tracking-wider">Tap to reveal answer</p>
+                <p className="text-[10px] text-slate-500 dark:text-[#525270] font-bold tracking-wider">Tap to reveal answer</p>
               </div>
             </div>
 
             {/* Back: Answer */}
-            <div className="absolute inset-0 w-full h-full backface-hidden rotate-y-180 bg-[#120a1f] border border-[#7c3aed40] rounded-xl flex flex-col p-8 shadow-[0_0_30px_rgba(124,58,237,0.1)]">
+            <div className="absolute inset-0 w-full h-full backface-hidden rotate-y-180 bg-indigo-50/90 dark:bg-[#120a1f] border-2 border-indigo-300 dark:border-[#7c3aed40] rounded-2xl flex flex-col p-8 shadow-xl">
               
               <div className="flex justify-between items-start mb-6">
-                <span className="text-[10px] font-bold text-[#a78bfa] uppercase tracking-widest bg-[#7c3aed20] px-3 py-1 rounded-full">
+                <span className="text-[10px] font-extrabold text-indigo-900 dark:text-[#a78bfa] uppercase tracking-widest bg-indigo-200 dark:bg-[#7c3aed20] px-3 py-1 rounded-full">
                   Answer
                 </span>
               </div>
               
               <div className="flex-1 flex flex-col items-center justify-center gap-4 overflow-y-auto pr-2 custom-scrollbar">
-                <p className="text-center text-sm md:text-base text-[#d4d4d8] leading-relaxed max-w-lg">
+                <p className="text-center text-sm md:text-base text-slate-900 dark:text-[#d4d4d8] font-bold leading-relaxed max-w-lg">
                   {card.answer}
                 </p>
               </div>
               
               <div className="absolute bottom-4 left-0 w-full text-center">
-                <p className="text-[10px] text-[#a78bfa] font-semibold tracking-wider opacity-60">Tap to see question</p>
+                <p className="text-[10px] text-indigo-700 dark:text-[#a78bfa] font-bold tracking-wider opacity-80">Tap to see question</p>
               </div>
             </div>
           </div>
@@ -646,18 +646,12 @@ export default function TranscriptViewer({
           <button
             onClick={() => { if (cardIdx > 0) { setCardIdx(cardIdx - 1); setShowAnswer(false); } }}
             disabled={cardIdx === 0}
-            className="px-6 py-2.5 text-xs font-bold uppercase tracking-widest border border-[#2a2a3e] rounded-lg text-[#94a3b8] hover:bg-[#13131f] hover:text-[#f8fafc] disabled:opacity-20 disabled:cursor-not-allowed transition-all"
+            className="px-6 py-2.5 text-xs font-bold uppercase tracking-widest border border-slate-300 dark:border-[#2a2a3e] rounded-xl text-slate-700 dark:text-[#94a3b8] bg-white dark:bg-transparent hover:bg-slate-100 dark:hover:bg-[#13131f] hover:text-slate-900 dark:hover:text-[#f8fafc] disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-sm"
           >← Previous</button>
-          
           <button
-            onClick={() => {
-              if (cardIdx < cards.length - 1) {
-                setCardIdx(cardIdx + 1); setShowAnswer(false);
-                if (videoId) recordFlashcardReview(videoId, activeTopicIdx);
-              }
-            }}
+            onClick={() => { if (cardIdx < cards.length - 1) { setCardIdx(cardIdx + 1); setShowAnswer(false); } }}
             disabled={cardIdx === cards.length - 1}
-            className="px-6 py-2.5 text-xs font-bold uppercase tracking-widest bg-white text-black hover:bg-gray-200 rounded-lg disabled:opacity-20 disabled:cursor-not-allowed transition-all shadow-md"
+            className="px-6 py-2.5 text-xs font-bold uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 dark:bg-[#7C3AED] dark:hover:bg-[#6D28D9] text-white rounded-xl disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-md"
           >Next →</button>
         </div>
       </div>
@@ -666,37 +660,39 @@ export default function TranscriptViewer({
 
   // ── QUIZ ──────────────────────────────────────────────────────────────────
   const renderQuiz = () => {
-    if (isLoadingQuiz) return <Spinner msg="Generating quiz…" />;
+    if (isLoadingQuiz) return <Spinner msg="Building assessment quiz…" />;
     const quizObj = quiz[activeTopicIdx];
-    const questions = quizObj?.quiz ?? [];
+    const questions = quizObj?.questions ?? [];
     if (!questions.length) return <Empty msg="Quiz loading…" />;
 
     const total = questions.length;
 
-    if (quizDone) {
-      const correct = answers.filter(Boolean).length;
+    if (quizFinished) {
+      let correct = 0;
+      questions.forEach((q, i) => {
+        if (answers[i] === q.correct_answer) correct++;
+      });
       const pct = Math.round((correct / total) * 100);
-      if (videoId) saveQuizResult(videoId, activeTopicIdx, correct, total);
       
       const [col, bg, label, icon] = pct >= 80
-        ? ['text-emerald-400', 'bg-emerald-500/10', 'Excellent Mastery', '🏆']
+        ? ['text-emerald-700 dark:text-emerald-400', 'bg-emerald-100 dark:bg-emerald-500/10', 'Excellent Mastery', '🏆']
         : pct >= 60
-        ? ['text-amber-400', 'bg-amber-500/10', 'Good Understanding', '👍']
-        : ['text-rose-400', 'bg-rose-500/10', 'Needs Review', '⚠️'];
+        ? ['text-amber-700 dark:text-amber-400', 'bg-amber-100 dark:bg-amber-500/10', 'Good Understanding', '👍']
+        : ['text-rose-700 dark:text-rose-400', 'bg-rose-100 dark:bg-rose-500/10', 'Needs Review', '⚠️'];
 
       return (
         <div className="flex-1 flex flex-col items-center justify-center p-12 select-text">
-          <div className="flex flex-col items-center justify-center bg-[#0c0c14] border border-[#2a2a3e] rounded-2xl p-10 shadow-2xl w-full max-w-md">
+          <div className="flex flex-col items-center justify-center bg-white dark:bg-[#0c0c14] border-2 border-slate-300 dark:border-[#2a2a3e] rounded-2xl p-10 shadow-2xl w-full max-w-md">
             <span className="text-5xl mb-4">{icon}</span>
             <p className={`text-6xl font-black tracking-tight mb-2 ${col}`}>{pct}%</p>
-            <p className="text-sm text-[#94a3b8] font-medium tracking-wide uppercase mb-6">{correct} out of {total} correct</p>
+            <p className="text-sm text-slate-600 dark:text-[#94a3b8] font-bold tracking-wide uppercase mb-6">{correct} out of {total} correct</p>
             
             <div className={`px-5 py-2 rounded-full border border-current/20 ${bg} ${col} mb-8`}>
-              <span className="text-xs font-bold uppercase tracking-widest">{label}</span>
+              <span className="text-xs font-extrabold uppercase tracking-widest">{label}</span>
             </div>
             
             <button onClick={resetQuiz}
-              className="w-full py-3.5 text-xs font-bold uppercase tracking-widest bg-white text-black hover:bg-gray-200 rounded-xl transition-all shadow-lg hover:shadow-xl">
+              className="w-full py-3.5 text-xs font-extrabold uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 dark:bg-white text-white dark:text-black hover:shadow-xl rounded-xl transition-all shadow-lg">
               Retry Assessment
             </button>
           </div>
@@ -709,10 +705,10 @@ export default function TranscriptViewer({
     const correct = q?.correct_answer;
 
     const optStyle = (letter) => {
-      if (!answered) return 'border-[#2a2a3e] bg-[#13131f] text-[#d4d4d8] hover:border-[#7c3aed60] hover:bg-[#7c3aed10] cursor-pointer';
-      if (letter === correct) return 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300';
-      if (letter === selected) return 'border-rose-500/50 bg-rose-500/10 text-rose-300';
-      return 'border-[#1a1a2a] bg-[#0c0c14] text-[#525270] opacity-50';
+      if (!answered) return 'border-2 border-slate-300 dark:border-[#2a2a3e] bg-white dark:bg-[#13131f] text-slate-900 dark:text-[#d4d4d8] font-bold hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-[#7c3aed10] shadow-sm cursor-pointer';
+      if (letter === correct) return 'border-2 border-emerald-500 bg-emerald-100 dark:bg-emerald-500/10 text-emerald-900 dark:text-emerald-300 font-extrabold shadow-md';
+      if (letter === selected) return 'border-2 border-rose-500 bg-rose-100 dark:bg-rose-500/10 text-rose-900 dark:text-rose-300 font-extrabold shadow-md';
+      return 'border border-slate-200 dark:border-[#1a1a2a] bg-slate-100 dark:bg-[#0c0c14] text-slate-400 dark:text-[#525270] opacity-50';
     };
 
     return (
@@ -721,18 +717,18 @@ export default function TranscriptViewer({
         {/* Header & Progress */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold text-[#7c3aed] uppercase tracking-widest bg-[#7c3aed15] px-3 py-1 rounded-full border border-[#7c3aed30]">
+            <span className="text-[10px] font-extrabold text-indigo-700 dark:text-[#7c3aed] uppercase tracking-widest bg-indigo-100 dark:bg-[#7c3aed15] px-3 py-1 rounded-full border border-indigo-300 dark:border-[#7c3aed30]">
               Assessment
             </span>
-            <span className="text-sm font-semibold text-[#a78bfa]">{topicTitle}</span>
+            <span className="text-sm font-bold text-slate-900 dark:text-[#a78bfa]">{topicTitle}</span>
           </div>
-          <span className="text-xs font-mono font-bold text-[#525270] bg-[#13131f] px-3 py-1 rounded-lg">
+          <span className="text-xs font-mono font-bold text-slate-700 dark:text-[#525270] bg-slate-200 dark:bg-[#13131f] px-3 py-1 rounded-lg">
             {qIdx + 1} / {total}
           </span>
         </div>
 
-        <div className="w-full h-1 bg-[#13131f] rounded-full overflow-hidden">
-          <div className="h-full bg-gradient-to-r from-[#7c3aed] to-[#a855f7] transition-all duration-500 ease-out"
+        <div className="w-full h-1.5 bg-slate-200 dark:bg-[#13131f] rounded-full overflow-hidden">
+          <div className="h-full bg-gradient-to-r from-sky-600 to-indigo-600 dark:from-[#7c3aed] dark:to-[#a855f7] transition-all duration-500 ease-out"
             style={{ width: `${(qIdx / total) * 100}%` }} />
         </div>
 
@@ -1280,17 +1276,17 @@ export default function TranscriptViewer({
   return (
     <div className="flex-1 flex flex-col min-h-[500px]">
       {/* Tab bar */}
-      <div className="flex items-center border-b border-[#1a1a1a] dark:border-[#1a1a1a] light:border-slate-200 px-3 py-2 gap-0.5 overflow-x-auto select-none bg-transparent light:bg-slate-50/50">
+      <div className="flex items-center border-b border-slate-200 dark:border-[#1a1a1a] px-3.5 py-2.5 gap-1.5 overflow-x-auto select-none bg-sky-50/70 dark:bg-transparent">
         {TABS.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`relative px-4 py-2 text-[11px] font-semibold rounded-md transition-all whitespace-nowrap ${
+            className={`relative px-4 py-2 text-xs font-extrabold rounded-xl transition-all whitespace-nowrap cursor-pointer ${
               activeTab === tab.id
-                ? 'bg-[#1a1a1a] dark:bg-[#1a1a1a] light:bg-white text-[#F5F5F5] dark:text-[#F5F5F5] light:text-indigo-600 border border-[#2a2a2a] dark:border-[#2a2a2a] light:border-slate-200 shadow-sm'
-                : 'text-[#404040] dark:text-[#404040] light:text-slate-500 hover:text-[#A3A3A3] light:hover:text-slate-800 border border-transparent'
+                ? 'bg-gradient-to-r from-sky-600 to-indigo-600 dark:bg-[#1e1e2e] text-white dark:text-[#F5F5F5] dark:border dark:border-[#33334d] shadow-md shadow-sky-500/20'
+                : 'text-slate-700 dark:text-[#A3A3A3] hover:bg-slate-200/60 dark:hover:text-[#F5F5F5] border border-transparent'
             }`}>
             {tab.label}
             {tab.loading && (
-              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-[#7C3AED] animate-pulse" />
+              <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-sky-500 dark:bg-[#7C3AED] animate-pulse" />
             )}
           </button>
         ))}

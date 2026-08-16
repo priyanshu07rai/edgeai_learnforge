@@ -1,7 +1,7 @@
 /**
  * FloatingAI.jsx — Persistent floating AI Tutor (bottom-RIGHT corner).
  * Answers from transcript only (RAG). No hallucination.
- * Capabilities: Explain / Simplify / Examples / Interview Questions / Custom question.
+ * Light/Dark theme-aware floating tutor modal.
  */
 import React, { useState, useRef, useEffect } from 'react';
 
@@ -66,36 +66,36 @@ export default function FloatingAI({ videoId, topicIndex, topicTitle }) {
 
       {/* Chat panel */}
       {open && (
-        <div className="mb-3 w-80 sm:w-[360px] bg-[#0c0c0c] border border-[#1e1e1e] rounded-2xl shadow-2xl shadow-black/70 flex flex-col overflow-hidden"
+        <div className="mb-3 w-80 sm:w-[360px] bg-white dark:bg-[#0c0c0c] border-2 border-slate-300 dark:border-[#1e1e1e] rounded-2xl shadow-2xl flex flex-col overflow-hidden transition-all duration-300"
           style={{ maxHeight: '500px' }}>
 
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#161616] bg-[#0e0e0e]">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-[#161616] bg-slate-100 dark:bg-[#0e0e0e]">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-full bg-[#7C3AED]/20 border border-[#7C3AED]/30 flex items-center justify-center text-sm">🤖</div>
+              <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-[#7C3AED]/20 border border-indigo-300 dark:border-[#7C3AED]/30 flex items-center justify-center text-sm">🤖</div>
               <div>
-                <p className="text-xs font-bold text-[#F0F0F0]">LearnForge Tutor</p>
-                <p className="text-[9px] text-[#404040]">Answers from transcript · No hallucination</p>
+                <p className="text-xs font-extrabold text-slate-900 dark:text-[#F0F0F0]">LearnForge Tutor</p>
+                <p className="text-[9px] font-semibold text-slate-500 dark:text-[#404040]">Answers from transcript · No hallucination</p>
               </div>
             </div>
-            <button onClick={() => setOpen(false)} className="text-[#383838] hover:text-[#737373] text-xs transition">✕</button>
+            <button onClick={() => setOpen(false)} className="text-slate-500 dark:text-[#383838] hover:text-slate-800 dark:hover:text-[#737373] text-xs font-bold transition">✕</button>
           </div>
 
           {/* Context selector */}
-          <div className="flex items-center gap-2 px-4 py-2 border-b border-[#141414] bg-[#0a0a0a]">
-            <span className="text-[9px] text-[#383838] shrink-0">Context:</span>
+          <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-[#141414] bg-slate-50 dark:bg-[#0a0a0a]">
+            <span className="text-[9px] font-bold text-slate-600 dark:text-[#383838] shrink-0">Context:</span>
             <button
               onClick={() => setSearchAll(false)}
-              className={`text-[9px] px-2.5 py-1 rounded-full font-semibold border transition-all ${
-                !searchAll ? 'bg-[#7C3AED]/15 border-[#7C3AED]/30 text-[#7C3AED]' : 'border-[#1e1e1e] text-[#404040] hover:text-[#737373]'
+              className={`text-[9px] px-2.5 py-1 rounded-full font-bold border transition-all ${
+                !searchAll ? 'bg-indigo-600 text-white border-indigo-600 dark:bg-[#7C3AED]/15 dark:border-[#7C3AED]/30 dark:text-[#7C3AED]' : 'border-slate-300 dark:border-[#1e1e1e] text-slate-600 dark:text-[#404040] hover:text-slate-900 dark:hover:text-[#737373]'
               }`}
             >
               📍 {topicTitle ? topicTitle.slice(0, 22) + (topicTitle.length > 22 ? '…' : '') : 'Current topic'}
             </button>
             <button
               onClick={() => setSearchAll(true)}
-              className={`text-[9px] px-2.5 py-1 rounded-full font-semibold border transition-all ${
-                searchAll ? 'bg-[#7C3AED]/15 border-[#7C3AED]/30 text-[#7C3AED]' : 'border-[#1e1e1e] text-[#404040] hover:text-[#737373]'
+              className={`text-[9px] px-2.5 py-1 rounded-full font-bold border transition-all ${
+                searchAll ? 'bg-indigo-600 text-white border-indigo-600 dark:bg-[#7C3AED]/15 dark:border-[#7C3AED]/30 dark:text-[#7C3AED]' : 'border-slate-300 dark:border-[#1e1e1e] text-slate-600 dark:text-[#404040] hover:text-slate-900 dark:hover:text-[#737373]'
               }`}
             >
               🌐 Full course
@@ -103,13 +103,13 @@ export default function FloatingAI({ videoId, topicIndex, topicTitle }) {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5" style={{ maxHeight: '300px' }}>
+          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-2.5 custom-scrollbar" style={{ maxHeight: '300px' }}>
             {messages.length === 0 && (
               <div className="space-y-1.5 pt-1">
-                <p className="text-[9px] text-[#2a2a2a] text-center pb-1">Quick actions</p>
+                <p className="text-[9px] font-bold text-slate-500 dark:text-[#2a2a2a] text-center pb-1">Quick actions</p>
                 {QUICK_ACTIONS.map((action, i) => (
                   <button key={i} onClick={() => send(action.q)}
-                    className="w-full text-left text-[10px] text-[#525252] px-3 py-2 bg-[#0e0e0e] border border-[#181818] rounded-lg hover:border-[#7C3AED]/25 hover:text-[#A3A3A3] transition-all">
+                    className="w-full text-left text-[10px] font-semibold text-slate-700 dark:text-[#525252] px-3 py-2 bg-slate-50 dark:bg-[#0e0e0e] border border-slate-200 dark:border-[#181818] rounded-lg hover:border-indigo-400 dark:hover:border-[#7C3AED]/25 hover:text-indigo-700 dark:hover:text-[#A3A3A3] transition-all">
                     {action.label}
                   </button>
                 ))}
@@ -119,22 +119,22 @@ export default function FloatingAI({ videoId, topicIndex, topicTitle }) {
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'user' ? (
-                  <div className="max-w-[82%] px-3 py-2 bg-[#7C3AED] rounded-2xl rounded-tr-sm text-[11px] text-white leading-relaxed">
+                  <div className="max-w-[82%] px-3 py-2 bg-indigo-600 dark:bg-[#7C3AED] rounded-2xl rounded-tr-sm text-[11px] font-semibold text-white leading-relaxed">
                     {msg.text}
                   </div>
                 ) : (
                   <div className="max-w-[92%] space-y-1">
-                    <div className="px-3 py-2.5 bg-[#111] border border-[#1e1e1e] rounded-2xl rounded-tl-sm text-[11px] text-[#C4C4C4] leading-relaxed">
+                    <div className="px-3 py-2.5 bg-slate-100 dark:bg-[#111] border border-slate-200 dark:border-[#1e1e1e] rounded-2xl rounded-tl-sm text-[11px] font-semibold text-slate-900 dark:text-[#C4C4C4] leading-relaxed">
                       {msg.text}
                     </div>
                     {msg.sources?.length > 0 && (
                       <details>
-                        <summary className="text-[9px] text-[#2a2a2a] cursor-pointer hover:text-[#404040] select-none list-none ml-1">
+                        <summary className="text-[9px] font-bold text-slate-500 dark:text-[#2a2a2a] cursor-pointer hover:text-slate-800 dark:hover:text-[#404040] select-none list-none ml-1">
                           📄 {msg.sources.length} source{msg.sources.length > 1 ? 's' : ''} from transcript
                         </summary>
                         <div className="mt-1 space-y-1">
                           {msg.sources.map((src, j) => (
-                            <div key={j} className="text-[9px] text-[#383838] bg-[#090909] border border-[#141414] rounded px-2 py-1.5 italic">
+                            <div key={j} className="text-[9px] font-medium text-slate-600 dark:text-[#383838] bg-slate-50 dark:bg-[#090909] border border-slate-200 dark:border-[#141414] rounded px-2 py-1.5 italic">
                               {src}
                             </div>
                           ))}
@@ -148,32 +148,31 @@ export default function FloatingAI({ videoId, topicIndex, topicTitle }) {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="px-3 py-2.5 bg-[#111] border border-[#1e1e1e] rounded-2xl rounded-tl-sm flex gap-1 items-center">
-                  {[0, 150, 300].map(d => (
-                    <span key={d} className="w-1.5 h-1.5 bg-[#7C3AED]/60 rounded-full animate-bounce"
-                      style={{ animationDelay: `${d}ms` }} />
-                  ))}
+                <div className="px-3 py-2 bg-slate-100 dark:bg-[#111] border border-slate-200 dark:border-[#1e1e1e] rounded-2xl text-[11px] text-slate-600 dark:text-[#A3A3A3] flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 dark:bg-[#7C3AED] animate-ping" />
+                  Thinking…
                 </div>
               </div>
             )}
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
-          <div className="px-3 py-3 border-t border-[#141414] flex gap-2">
+          {/* Input box */}
+          <div className="p-2.5 border-t border-slate-200 dark:border-[#161616] bg-slate-100 dark:bg-[#0a0a0a] flex items-center gap-2">
             <input
               ref={inputRef}
+              type="text"
               value={input}
               onChange={e => setInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-              placeholder="Ask anything…"
+              onKeyDown={e => e.key === 'Enter' && send()}
+              placeholder="Ask a question about this video…"
               disabled={loading}
-              className="flex-1 px-3 py-2 text-[11px] bg-[#0e0e0e] border border-[#1e1e1e] rounded-xl text-[#D4D4D4] placeholder-[#2a2a2a] focus:outline-none focus:border-[#7C3AED]/40 disabled:opacity-40 transition-all"
+              className="flex-1 px-3 py-2 text-[11px] font-medium bg-white dark:bg-[#0e0e0e] border border-slate-300 dark:border-[#1e1e1e] rounded-xl text-slate-900 dark:text-[#D4D4D4] placeholder-slate-400 dark:placeholder-[#2a2a2a] focus:outline-none focus:border-indigo-500 dark:focus:border-[#7C3AED]/40 disabled:opacity-40 transition-all"
             />
             <button
               onClick={() => send()}
               disabled={!input.trim() || loading}
-              className="px-3 py-2 bg-[#7C3AED] hover:bg-[#6D28D9] disabled:bg-[#141414] disabled:text-[#2a2a2a] text-white text-xs font-bold rounded-xl transition-all"
+              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 dark:bg-[#7C3AED] dark:hover:bg-[#6D28D9] disabled:bg-slate-300 dark:disabled:bg-[#141414] text-white text-xs font-bold rounded-xl transition-all"
             >→</button>
           </div>
         </div>
@@ -182,16 +181,16 @@ export default function FloatingAI({ videoId, topicIndex, topicTitle }) {
       {/* Trigger button */}
       <button
         onClick={() => setOpen(o => !o)}
-        className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border shadow-xl shadow-black/50 transition-all font-semibold text-sm ${
+        className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl border-2 shadow-xl transition-all font-bold text-sm select-none ${
           open
-            ? 'bg-[#7C3AED] border-[#7C3AED] text-white'
-            : 'bg-[#0e0e0e] border-[#1e1e1e] text-[#737373] hover:border-[#7C3AED]/40 hover:text-[#D4D4D4]'
+            ? 'bg-indigo-600 border-indigo-600 text-white shadow-indigo-500/30'
+            : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 dark:bg-[#0e0e0e] dark:border-[#1e1e1e] dark:text-[#D4D4D4] shadow-slate-300/50 dark:shadow-black/50'
         }`}
       >
         <span className="text-base">🤖</span>
         <span>AI Tutor</span>
         {!open && unreadCount > 0 && (
-          <span className="w-2 h-2 rounded-full bg-[#7C3AED] animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-amber-400 dark:bg-[#7C3AED] animate-pulse" />
         )}
       </button>
     </div>
