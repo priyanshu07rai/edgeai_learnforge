@@ -8,6 +8,7 @@ import TopicDropdown from '../components/TopicDropdown';
 import TopicProcessor from '../components/TopicProcessor';
 import DebugViewer from '../components/DebugViewer';
 import FloatingAI from '../components/FloatingAI';
+import ThemeToggle from '../components/ThemeToggle';
 // Using native HTML5 <video> — no library needed
 import { fetchTranscript, processVideo, generateNotesForTopic, generateFlashcardsForTopic, generateQuizForTopic, fetchOverallSummary, getVideoUrl } from '../services/api';
 import { saveSession } from './DashboardPage';
@@ -277,21 +278,22 @@ export default function TranscriptPage() {
     Object.values(loadingCards).some(Boolean) || Object.values(loadingQuiz).some(Boolean);
 
   return (
-    <div className="min-h-screen bg-[#0B0B0B] text-[#F5F5F5] flex flex-col items-center justify-start px-4 py-16 sm:px-6 md:py-20">
-      <div className="w-full max-w-5xl flex flex-col space-y-10">
+    <div className="min-h-screen bg-[#0B0B0B] dark:bg-[#0B0B0B] light:bg-[#F8FAFC] text-[#F5F5F5] dark:text-[#F5F5F5] light:text-slate-900 flex flex-col items-center justify-start px-4 py-10 sm:px-6 md:py-14 transition-colors duration-300">
+      <div className="w-full max-w-5xl flex flex-col space-y-8">
 
-        {/* Header */}
-        <div className="text-center space-y-3">
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-[#F5F5F5] select-none">
+        {/* Top Middle Theme Toggle & Header */}
+        <div className="flex flex-col items-center text-center space-y-3">
+          <ThemeToggle />
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-[#F5F5F5] dark:text-[#F5F5F5] light:text-slate-900 select-none">
             LearnForge AI
           </h1>
-          <p className="text-sm text-[#525252] max-w-lg mx-auto">
+          <p className="text-sm text-[#A3A3A3] light:text-slate-500 max-w-lg mx-auto font-medium">
             Transform educational videos into structured study guides
           </p>
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center justify-center gap-3 pt-1">
             <button
               onClick={() => navigate('/dashboard')}
-              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-[#737373] border border-[#262626] rounded-full hover:border-[#7C3AED]/40 hover:text-[#7C3AED] transition-all"
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-medium text-[#737373] dark:text-[#737373] light:text-slate-600 bg-transparent light:bg-white border border-[#262626] dark:border-[#262626] light:border-slate-200 rounded-full hover:border-[#7C3AED]/40 light:hover:border-indigo-500 hover:text-[#7C3AED] light:hover:text-indigo-600 shadow-sm transition-all"
             >
               📊 Dashboard
             </button>
@@ -419,11 +421,11 @@ export default function TranscriptPage() {
             )}
 
             {/* Panel */}
-            <div className="w-full flex flex-col bg-[#111111] border border-[#1e1e1e] rounded-xl overflow-hidden shadow-2xl">
+            <div className="w-full flex flex-col bg-[#111111] dark:bg-[#111111] light:bg-white border border-[#1e1e1e] dark:border-[#1e1e1e] light:border-slate-200 rounded-2xl overflow-hidden shadow-2xl light:shadow-xl light:shadow-slate-200/50 transition-colors duration-300">
               {/* Column header */}
               {topics.length > 0 && (
-                <div className="hidden md:flex items-center border-b border-[#1e1e1e] text-[10px] font-bold tracking-widest text-[#404040] uppercase">
-                  <div className="w-[260px] shrink-0 border-r border-[#1e1e1e] px-5 py-3">Topics</div>
+                <div className="hidden md:flex items-center border-b border-[#1e1e1e] dark:border-[#1e1e1e] light:border-slate-200 text-[10px] font-bold tracking-widest text-[#404040] dark:text-[#404040] light:text-slate-400 uppercase bg-[#0B0B0B]/40 dark:bg-[#0B0B0B]/40 light:bg-slate-50">
+                  <div className="w-[280px] shrink-0 border-r border-[#1e1e1e] dark:border-[#1e1e1e] light:border-slate-200 px-5 py-3">Topics</div>
                   <div className="flex-1 px-5 py-3">Study Space</div>
                 </div>
               )}

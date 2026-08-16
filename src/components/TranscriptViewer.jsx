@@ -1282,13 +1282,13 @@ export default function TranscriptViewer({
   return (
     <div className="flex-1 flex flex-col min-h-[500px]">
       {/* Tab bar */}
-      <div className="flex items-center border-b border-[#1a1a1a] px-3 py-2 gap-0.5 overflow-x-auto select-none">
+      <div className="flex items-center border-b border-[#1a1a1a] dark:border-[#1a1a1a] light:border-slate-200 px-3 py-2 gap-0.5 overflow-x-auto select-none bg-transparent light:bg-slate-50/50">
         {TABS.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className={`relative px-4 py-2 text-[11px] font-semibold rounded-md transition-all whitespace-nowrap ${
               activeTab === tab.id
-                ? 'bg-[#1a1a1a] text-[#F5F5F5] border border-[#2a2a2a]'
-                : 'text-[#404040] hover:text-[#A3A3A3] border border-transparent'
+                ? 'bg-[#1a1a1a] dark:bg-[#1a1a1a] light:bg-white text-[#F5F5F5] dark:text-[#F5F5F5] light:text-indigo-600 border border-[#2a2a2a] dark:border-[#2a2a2a] light:border-slate-200 shadow-sm'
+                : 'text-[#404040] dark:text-[#404040] light:text-slate-500 hover:text-[#A3A3A3] light:hover:text-slate-800 border border-transparent'
             }`}>
             {tab.label}
             {tab.loading && (

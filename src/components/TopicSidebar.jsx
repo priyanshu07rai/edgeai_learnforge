@@ -16,19 +16,19 @@ export default function TopicSidebar({ topics, activeTopicIdx, onTopicClick, vid
   if (!topics || topics.length === 0) return null;
 
   return (
-    <div className="w-[280px] shrink-0 border-r border-[#262626] h-[500px] flex flex-col bg-[#111111] text-left select-none overflow-hidden">
+    <div className="w-[280px] shrink-0 border-r border-[#262626] dark:border-[#262626] light:border-slate-200 h-[500px] flex flex-col bg-[#111111] dark:bg-[#111111] light:bg-white text-left select-none overflow-hidden transition-colors duration-300">
       <div className="flex-1 overflow-y-auto p-4 space-y-1.5 custom-scrollbar">
         {/* Course Overview button */}
         <button
           onClick={() => onTopicClick(-1)}
           className={`w-full text-left text-sm py-2 px-3 rounded-md transition-all duration-150 cursor-pointer flex items-center gap-2.5 border ${
             activeTopicIdx === -1
-              ? 'border-[#262626] bg-[#0B0B0B] text-[#7C3AED] font-semibold shadow-inner'
-              : 'border-transparent text-[#A3A3A3] hover:text-[#F5F5F5] hover:bg-[#0B0B0B]/50'
+              ? 'border-[#262626] dark:border-[#262626] light:border-indigo-200 bg-[#0B0B0B] dark:bg-[#0B0B0B] light:bg-indigo-50/80 text-[#7C3AED] dark:text-[#7C3AED] light:text-indigo-600 font-semibold shadow-inner'
+              : 'border-transparent text-[#A3A3A3] dark:text-[#A3A3A3] light:text-slate-600 hover:text-[#F5F5F5] light:hover:text-slate-900 hover:bg-[#0B0B0B]/50 light:hover:bg-slate-100'
           }`}
         >
           <span>📌</span>
-          <span className="truncate">Course Overview</span>
+          <span className="truncate font-medium">Course Overview</span>
         </button>
 
         {topics.map((topic, idx) => {
@@ -36,15 +36,14 @@ export default function TopicSidebar({ topics, activeTopicIdx, onTopicClick, vid
           const status = videoId ? getTopicAccuracyStatus(videoId, idx) : 'unattempted';
           const dot = STATUS_DOT[status];
 
-
           return (
             <button
               key={idx}
               onClick={() => onTopicClick(idx)}
               className={`w-full text-left text-sm py-2 px-3 rounded-md transition-all duration-150 cursor-pointer flex items-center gap-2.5 border ${
                 isActive
-                  ? 'border-[#262626] bg-[#0B0B0B] text-[#7C3AED] font-semibold shadow-inner'
-                  : 'border-transparent text-[#A3A3A3] hover:text-[#F5F5F5] hover:bg-[#0B0B0B]/50'
+                  ? 'border-[#262626] dark:border-[#262626] light:border-indigo-200 bg-[#0B0B0B] dark:bg-[#0B0B0B] light:bg-indigo-50/80 text-[#7C3AED] dark:text-[#7C3AED] light:text-indigo-600 font-semibold shadow-inner'
+                  : 'border-transparent text-[#A3A3A3] dark:text-[#A3A3A3] light:text-slate-600 hover:text-[#F5F5F5] light:hover:text-slate-900 hover:bg-[#0B0B0B]/50 light:hover:bg-slate-100'
               }`}
             >
               {/* Accuracy status dot */}

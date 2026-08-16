@@ -18,6 +18,8 @@ import {
   getViewedTopics,
 } from '../utils/progress';
 
+import ThemeToggle from '../components/ThemeToggle';
+
 // Reads videoId + topics from sessionStorage (set by TranscriptPage)
 const SESSION_KEY = 'lf_session';
 
@@ -79,20 +81,25 @@ export default function DashboardPage() {
   const s = summary ?? { completionPct: 0, avgAccuracy: 0, viewedTopics: 0, totalTopics: topics.length, quizAttempted: 0, totalFlashcardReviews: 0, weakTopics: [], strongTopics: [] };
 
   return (
-    <div className="min-h-screen bg-[#0B0B0B] text-[#F5F5F5]">
+    <div className="min-h-screen bg-[#0B0B0B] dark:bg-[#0B0B0B] light:bg-[#F8FAFC] text-[#F5F5F5] dark:text-[#F5F5F5] light:text-slate-900 transition-colors duration-300">
       {/* Nav */}
-      <div className="border-b border-[#1a1a1a] bg-[#0e0e0e] px-6 py-4 flex items-center justify-between">
+      <div className="border-b border-[#1a1a1a] dark:border-[#1a1a1a] light:border-slate-200 bg-[#0e0e0e] dark:bg-[#0e0e0e] light:bg-white px-6 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/')}
-            className="text-[#737373] hover:text-[#F5F5F5] text-sm transition"
+            className="text-[#737373] dark:text-[#737373] light:text-slate-600 hover:text-[#F5F5F5] light:hover:text-slate-900 text-sm transition font-medium"
           >
             ← Back
           </button>
-          <span className="text-[#2a2a2a]">|</span>
-          <span className="text-sm font-semibold text-[#F5F5F5]">Learning Dashboard</span>
+          <span className="text-[#2a2a2a] light:text-slate-300">|</span>
+          <span className="text-sm font-semibold text-[#F5F5F5] dark:text-[#F5F5F5] light:text-slate-900">Learning Dashboard</span>
         </div>
-        <span className="text-xs text-[#525252]">{topics.length} topics · {s.difficulty ?? 'intermediate'} level</span>
+
+        <div className="flex items-center justify-center -mb-4">
+          <ThemeToggle />
+        </div>
+
+        <span className="text-xs text-[#525252] dark:text-[#525252] light:text-slate-500">{topics.length} topics · {s.difficulty ?? 'intermediate'} level</span>
       </div>
 
       <div className="max-w-5xl mx-auto px-6 py-10 space-y-10">
