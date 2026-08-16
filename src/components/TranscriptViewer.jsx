@@ -666,8 +666,9 @@ export default function TranscriptViewer({
     if (!questions.length) return <Empty msg="Quiz loading…" />;
 
     const total = questions.length;
+    const isDone = quizDone || (typeof quizFinished !== 'undefined' && quizFinished);
 
-    if (quizFinished) {
+    if (isDone) {
       let correct = 0;
       questions.forEach((q, i) => {
         if (answers[i] === q.correct_answer) correct++;
@@ -685,14 +686,14 @@ export default function TranscriptViewer({
           <div className="flex flex-col items-center justify-center bg-white dark:bg-[#0c0c14] border-2 border-slate-300 dark:border-[#2a2a3e] rounded-2xl p-10 shadow-2xl w-full max-w-md">
             <span className="text-5xl mb-4">{icon}</span>
             <p className={`text-6xl font-black tracking-tight mb-2 ${col}`}>{pct}%</p>
-            <p className="text-sm text-slate-600 dark:text-[#94a3b8] font-bold tracking-wide uppercase mb-6">{correct} out of {total} correct</p>
+            <p className="text-sm text-slate-700 dark:text-[#94a3b8] font-bold tracking-wide uppercase mb-6">{correct} out of {total} correct</p>
             
             <div className={`px-5 py-2 rounded-full border border-current/20 ${bg} ${col} mb-8`}>
               <span className="text-xs font-extrabold uppercase tracking-widest">{label}</span>
             </div>
             
             <button onClick={resetQuiz}
-              className="w-full py-3.5 text-xs font-extrabold uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 dark:bg-white text-white dark:text-black hover:shadow-xl rounded-xl transition-all shadow-lg">
+              className="w-full py-3.5 text-xs font-extrabold uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 dark:bg-white text-white dark:text-black hover:shadow-xl rounded-xl transition-all shadow-lg cursor-pointer">
               Retry Assessment
             </button>
           </div>
@@ -705,7 +706,7 @@ export default function TranscriptViewer({
     const correct = q?.correct_answer;
 
     const optStyle = (letter) => {
-      if (!answered) return 'border-2 border-slate-300 dark:border-[#2a2a3e] bg-white dark:bg-[#13131f] text-slate-900 dark:text-[#d4d4d8] font-bold hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-[#7c3aed10] shadow-sm cursor-pointer';
+      if (!answered) return 'border-2 border-slate-300 dark:border-[#2a2a3e] bg-white dark:bg-[#13131f] text-slate-900 dark:text-[#d4d4d8] font-bold hover:border-indigo-600 hover:bg-indigo-50/60 dark:hover:bg-[#7c3aed10] shadow-sm cursor-pointer';
       if (letter === correct) return 'border-2 border-emerald-500 bg-emerald-100 dark:bg-emerald-500/10 text-emerald-900 dark:text-emerald-300 font-extrabold shadow-md';
       if (letter === selected) return 'border-2 border-rose-500 bg-rose-100 dark:bg-rose-500/10 text-rose-900 dark:text-rose-300 font-extrabold shadow-md';
       return 'border border-slate-200 dark:border-[#1a1a2a] bg-slate-100 dark:bg-[#0c0c14] text-slate-400 dark:text-[#525270] opacity-50';
@@ -734,7 +735,7 @@ export default function TranscriptViewer({
 
         {/* Question */}
         <div className="pt-4 pb-2">
-          <h3 className="text-lg md:text-xl font-bold text-[#f8fafc] leading-relaxed">
+          <h3 className="text-lg md:text-xl font-extrabold text-slate-900 dark:text-[#f8fafc] leading-relaxed">
             {q?.question}
           </h3>
         </div>
@@ -743,8 +744,6 @@ export default function TranscriptViewer({
         <div className="space-y-3">
           {q?.options?.map((opt, i) => {
             const letter = ['A', 'B', 'C', 'D'][i];
-            
-            // Clean up the letter prefix from the text if present
             const optText = opt.startsWith(`${letter})`) ? opt.substring(2).trim() : opt;
             
             return (
@@ -754,12 +753,12 @@ export default function TranscriptViewer({
                 className={`w-full flex items-center gap-4 text-left px-5 py-4 rounded-xl border transition-all duration-200 ${optStyle(letter)}`}>
                 
                 <span className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-xs font-bold border
-                  ${answered && letter === correct ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 
-                    answered && letter === selected ? 'bg-rose-500/20 border-rose-500/40 text-rose-400' :
-                    'bg-[#1e1e2e] border-[#2a2a3e] text-[#94a3b8]'}`}>
+                  ${answered && letter === correct ? 'bg-emerald-600 text-white border-emerald-600' : 
+                    answered && letter === selected ? 'bg-rose-600 text-white border-rose-600' :
+                    'bg-slate-100 dark:bg-[#1e1e2e] border-slate-300 dark:border-[#2a2a3e] text-slate-900 dark:text-[#94a3b8]'}`}>
                   {letter}
                 </span>
-                <span className="text-sm leading-relaxed">{optText}</span>
+                <span className="text-sm font-bold text-slate-900 dark:text-[#d4d4d8] leading-relaxed">{optText}</span>
               </button>
             );
           })}
@@ -768,23 +767,23 @@ export default function TranscriptViewer({
         {/* Explanation Reveal */}
         <div className={`transition-all duration-500 overflow-hidden ${showExp ? 'max-h-[500px] opacity-100 mt-6' : 'max-h-0 opacity-0 mt-0'}`}>
           {showExp && q?.explanation && (
-            <div className={`p-5 rounded-xl border flex gap-4 items-start ${
+            <div className={`p-5 rounded-xl border-2 flex gap-4 items-start ${
               selected === correct 
-                ? 'bg-[#061810] border-emerald-500/30' 
-                : 'bg-[#18060a] border-rose-500/30'
+                ? 'bg-emerald-50 dark:bg-[#061810] border-emerald-300 dark:border-emerald-500/30' 
+                : 'bg-rose-50 dark:bg-[#18060a] border-rose-300 dark:border-rose-500/30'
             }`}>
-              <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full ${
-                selected === correct ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+              <div className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full font-bold ${
+                selected === correct ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
               }`}>
                 {selected === correct ? '✓' : '✗'}
               </div>
               <div className="space-y-1">
-                <p className={`text-sm font-bold tracking-wide ${
-                  selected === correct ? 'text-emerald-400' : 'text-rose-400'
+                <p className={`text-sm font-extrabold tracking-wide ${
+                  selected === correct ? 'text-emerald-900 dark:text-emerald-400' : 'text-rose-900 dark:text-rose-400'
                 }`}>
                   {selected === correct ? 'Correct!' : 'Incorrect'}
                 </p>
-                <p className="text-sm text-[#cbd5e1] leading-relaxed">
+                <p className="text-sm text-slate-800 dark:text-[#cbd5e1] font-semibold leading-relaxed">
                   {q.explanation}
                 </p>
               </div>
@@ -801,7 +800,7 @@ export default function TranscriptViewer({
               if (qIdx + 1 >= total) setQuizDone(true);
               else { setQIdx(qIdx + 1); setSelected(null); setShowExp(false); }
             }}
-            className="px-8 py-3 text-xs font-bold uppercase tracking-widest bg-white text-black hover:bg-gray-200 rounded-xl shadow-lg transition-all">
+            className="px-8 py-3 text-xs font-extrabold uppercase tracking-widest bg-indigo-600 hover:bg-indigo-700 dark:bg-white text-white dark:text-black rounded-xl shadow-lg transition-all cursor-pointer">
             {qIdx + 1 >= total ? 'View Assessment Results' : 'Next Question →'}
           </button>
         </div>
