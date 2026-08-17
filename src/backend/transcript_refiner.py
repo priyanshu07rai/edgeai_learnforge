@@ -260,6 +260,73 @@ _VOCAL_HESITATIONS = re.compile(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 4. UNIVERSAL CONVERSATIONAL FILLER — sentence-level cleaning
+# ══════════════════════════════════════════════════════════════════════════════
+# These patterns strip conversational noise that contaminates content quality
+# for ANY video topic (engineering, medicine, history, cooking, science, etc.)
+#
+# Strategy: Only strip these when they appear as:
+#   - Sentence openers (at the start of text or after punctuation)
+#   - Isolated filler phrases (surrounded by commas/boundaries, carry no info)
+#
+# We do NOT strip "right", "okay", "well" mid-sentence — they can be
+# pedagogical or domain terms ("right angle", "well-being", "okay protocol").
+
+# Sentence-opening filler patterns — matches at the very start of a sentence
+# Captures: "Alright,", "Okay so", "So guys", "Now", "Well so", etc.
+_SENTENCE_OPENER_FILLERS = re.compile(
+    r"^(?:"
+    r"(?:alright|all right|okay|ok|so|now|well|right|yes|yeah|yep|cool|great|good)\s*[,.]?\s*"
+    r"(?:so|now|let(?:'s| us)|guys?|everyone|folks|friends|students?|class|people|team)?\s*[,.]?\s*"
+    r"|"
+    r"(?:hello|hi|hey)\s+(?:everyone|guys?|folks|students?|class|friends|all|there)\s*[,!.]*\s*"
+    r"|"
+    r"(?:welcome\s+(?:back\s+)?to|welcome\s+everyone)\s+[^.!?]*[.!?]?\s*"
+    r"|"
+    r"(?:in\s+this\s+(?:video|lecture|tutorial|session|lesson|class|part|episode))\s*[,.]?\s*"
+    r"|"
+    r"(?:today\s+(?:we(?:'re|\s+are|\s+will)?|I(?:'m|\s+am|\s+will)))\s+(?:going\s+to|gonna|covering|talking|discussing|looking|starting)\s*"
+    r")",
+    re.IGNORECASE
+)
+
+# Mid-text isolated filler phrases (surrounded by punctuation/boundaries)
+# These add zero information and contaminate extracted knowledge
+_MIDTEXT_FILLERS = re.compile(
+    r"(?:,\s*|\.\s*|\b)"
+    r"(?:"
+    r"you\s+know\s+what\s+I\s+mean|"
+    r"if\s+you\s+know\s+what\s+I\s+mean|"
+    r"right\s*\?|"
+    r"okay\s*\?|"
+    r"got\s+it\s*\?|"
+    r"makes\s+sense\s*\?|"
+    r"does\s+that\s+make\s+sense\s*\?|"
+    r"are\s+you\s+with\s+me\s*\?|"
+    r"follow\s+me\s+so\s+far\s*\?"
+    r")"
+    r"(?:\s*,|\s*\.|$)",
+    re.IGNORECASE
+)
+
+# Promotional/channel spam patterns — universal, not topic-specific
+_CHANNEL_SPAM = re.compile(
+    r"(?:"
+    r"(?:please\s+)?(?:like\s+(?:and\s+)?(?:share|subscribe)|subscribe\s+(?:to\s+)?(?:the\s+)?channel|"
+    r"hit\s+the\s+(?:bell|like)\s+(?:button|icon)|"
+    r"(?:leave|drop)\s+(?:a\s+)?comment|"
+    r"(?:follow|check\s+out)\s+(?:me|us)\s+on\s+(?:twitter|instagram|linkedin|youtube|github)|"
+    r"(?:find|connect)\s+(?:me|us)\s+on\s+(?:twitter|instagram|linkedin)|"
+    r"link(?:s)?\s+(?:in|are\s+in)\s+the\s+(?:description|bio)|"
+    r"(?:join|check)\s+(?:our\s+)?(?:discord|telegram|whatsapp)\s+(?:server|group|channel)|"
+    r"(?:this\s+video\s+is\s+)?sponsored\s+by)"
+    r")[^.!?]*[.!?]?",
+    re.IGNORECASE
+)
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 4. ASR NOISE MARKERS — bracketed artifacts from auto-captioning
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -272,6 +339,39 @@ _ASR_NOISE = re.compile(
 # ══════════════════════════════════════════════════════════════════════════════
 # INTERNAL HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
+
+def _strip_channel_spam(text: str) -> str:
+    """
+    Remove YouTube channel self-promotion sentences entirely.
+    Works universally for any video topic/domain.
+    Only removes full promotional sentences, never partial content lines.
+    """
+    return _CHANNEL_SPAM.sub('', text).strip()
+
+
+def _strip_sentence_opener_fillers(text: str) -> str:
+    """
+    Strip generic conversational openers from the START of a text block.
+    Example: "Alright so today we're going to talk about X" → "X"
+             "Okay guys, in this video..." → ""  (full filler → empty → skipped)
+    Does NOT touch mid-sentence content or domain-specific uses of these words.
+    """
+    stripped = _SENTENCE_OPENER_FILLERS.sub('', text).strip()
+    # Clean up any leading punctuation/comma left after stripping
+    stripped = re.sub(r'^[,.\s]+', '', stripped).strip()
+    # If stripping removed everything meaningful (< 10 chars left), keep original
+    if len(stripped) < 10 and len(text) > 30:
+        return text
+    return stripped if stripped else text
+
+
+def _strip_midtext_fillers(text: str) -> str:
+    """
+    Remove isolated mid-sentence confirmation filler phrases.
+    Example: "This is how it works, right?, and then..." → "This is how it works, and then..."
+    """
+    return _MIDTEXT_FILLERS.sub('', text).strip()
+
 
 def _apply_tech_normalization(text: str) -> str:
     """
@@ -354,39 +454,60 @@ def _capitalize_segment_start(text: str) -> str:
 
 def refine_transcript_segment(text: str) -> str:
     """
-    Apply conservative polish to a single transcript segment.
+    Apply polish to a single transcript segment.
+    Works for ANY video topic — engineering, medicine, history, science, cooking, etc.
 
-    Safe to call on short individual segments (e.g. YouTube caption lines).
-    Preserves ALL educational content. Only removes pure acoustic/ASR noise.
-
-    Order matters — hesitations removed before dedup to avoid
-    leaving orphaned spaces that confuse the dedup regex.
+    Applies in order:
+      1. Strip channel spam sentences (subscribe calls, social links, sponsor blocks)
+      2. Strip conversational sentence openers (Alright, Okay guys, Hello everyone…)
+      3. Strip bracketed ASR noise markers ([inaudible], [music])
+      4. Fix informal contractions (gonna → going to, wanna → want to)
+      5. Normalize tech term capitalization (python → Python, html → HTML)
+      6. Remove pure vocal hesitation sounds (um, uh, hmm, er)
+      7. Remove mid-text isolated filler phrases (right?, makes sense?)
+      8. Remove stutter-style 3+ consecutive repetitions
+      9. Normalize whitespace
+     10. Fix punctuation spacing artifacts
+     11. Capitalize segment start
     """
     if not text or len(text.strip()) < 2:
         return text
 
-    # Step 1: Strip bracketed ASR noise markers
+    # Step 1: Strip channel/social spam entirely
+    text = _strip_channel_spam(text)
+
+    # Step 2: Strip conversational openers at sentence start
+    text = _strip_sentence_opener_fillers(text)
+
+    # If text is now empty after spam/opener removal, return empty
+    if not text or len(text.strip()) < 2:
+        return ''
+
+    # Step 3: Strip bracketed ASR noise markers
     text = _ASR_NOISE.sub('', text)
 
-    # Step 2: Fix informal contractions (gonna, wanna, etc.)
+    # Step 4: Fix informal contractions (gonna, wanna, etc.)
     text = _apply_contractions(text)
 
-    # Step 3: Normalize tech term capitalization
+    # Step 5: Normalize tech term capitalization
     text = _apply_tech_normalization(text)
 
-    # Step 4: Remove pure vocal hesitation sounds (um, uh, hmm, er)
+    # Step 6: Remove pure vocal hesitation sounds (um, uh, hmm, er)
     text = _remove_vocal_hesitations(text)
 
-    # Step 5: Remove stutter-style 3+ consecutive repetitions only
+    # Step 7: Strip isolated mid-text filler phrases
+    text = _strip_midtext_fillers(text)
+
+    # Step 8: Remove stutter-style 3+ consecutive repetitions only
     text = _deduplicate_stutters(text)
 
-    # Step 6: Normalize whitespace
+    # Step 9: Normalize whitespace
     text = _normalize_whitespace(text)
 
-    # Step 7: Fix punctuation spacing artifacts
+    # Step 10: Fix punctuation spacing artifacts
     text = _fix_punctuation_spacing(text)
 
-    # Step 8: Capitalize segment start
+    # Step 11: Capitalize segment start
     text = _capitalize_segment_start(text)
 
     return text

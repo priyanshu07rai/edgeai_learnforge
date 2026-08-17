@@ -515,40 +515,27 @@ def _run_pipeline_for_knowledge(topic_title, topic_id, topic_text, topic_index, 
     # Budget input to 8000 chars for technical classification and LLM extraction
     llm_input_text = _enforce_context_budget(cleaned, max_chars=8000)
 
-    # ── Step 3: Deterministic Keywords & Technical Routing ────────────────────
+    # ── Step 3: Deterministic Keywords ─────────────────────────────────────────
     key_terms = extract_deterministic_keywords(llm_input_text)
     print(f"[LearnForge Notes] [{topic_index}] Deterministic key terms: {key_terms}")
-    
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    routing_metadata = llama_metadata_router(llm_input_text, gemini_key=gemini_key, ollama_url=ollama_url)
-    print(f"[LearnForge Notes] [{topic_index}] Routing metadata: {routing_metadata}")
-    
-    # Strictly non-technical or conversational overview chunk
-    if not routing_metadata.get("is_technical") or len(llm_input_text) < 500:
-        print(f"[LearnForge Notes] [{topic_index}] Flagged as conversational/non-technical. Generating conversational outline.")
-        
-        summary_text = f"This segment outlines conversational remarks, course pacing orientation, or general overview of {topic_title}."
-        k = _empty_knowledge(topic_title)
-        k["concept"] = topic_title
-        k["definition"] = summary_text
-        k["explanation"] = "The instructor introduces the foundational context and outlines the course structure or upcoming concepts. No direct technical implementation steps or terminal commands are performed in this introductory block."
-        k["applications"] = ["Understanding high-level outline and context."]
-        k["warnings"] = ["Assuming technical configurations are performed in this conversational section."]
-        k["interview_questions"] = [f"What is the primary theme or introductory context covered in this segment?"]
-        k["keywords"] = key_terms if key_terms else ["Introduction"]
-        return populate_legacy_keys_on_knowledge(k)
 
-    # ── Step 4: Technical extraction ──────────────────────────────────────────
+    # ── Step 4: LLM Knowledge Extraction ────────────────────────────────────────
+    # NOTE: We removed the is_technical() router gate — it was incorrectly flagging
+    # real educational content as "conversational" and generating useless stub text.
+    # Instead: attempt LLM extraction for ALL segments with sufficient content (≥200 chars).
+    # The LLM prompts themselves handle conversational vs. technical distinctions internally.
     knowledge = None
+    gemini_key = os.environ.get("GEMINI_API_KEY")
     ollama_online = check_ollama_available(ollama_url)
 
-    if gemini_key and len(llm_input_text) > 80:
-        print(f"[LearnForge Notes] Calling Gemini knowledge extraction for [{topic_index}]...")
-        knowledge = _call_llm_to_extract_knowledge(topic_title, llm_input_text, gemini_key=gemini_key)
-        
-    if not knowledge and ollama_online and len(llm_input_text) > 80:
-        print(f"[LearnForge Notes] Calling Ollama knowledge extraction for [{topic_index}]...")
-        knowledge = _call_llm_to_extract_knowledge(topic_title, llm_input_text, ollama_url=ollama_url)
+    if len(llm_input_text) >= 200:
+        if gemini_key:
+            print(f"[LearnForge Notes] Calling Gemini knowledge extraction for [{topic_index}]...")
+            knowledge = _call_llm_to_extract_knowledge(topic_title, llm_input_text, gemini_key=gemini_key)
+
+        if not knowledge and ollama_online:
+            print(f"[LearnForge Notes] Calling Ollama knowledge extraction for [{topic_index}]...")
+            knowledge = _call_llm_to_extract_knowledge(topic_title, llm_input_text, ollama_url=ollama_url)
 
     # ── Step 5: Heuristic extraction fallback ─────────────────────────────────
     if not knowledge:
@@ -560,6 +547,7 @@ def _run_pipeline_for_knowledge(topic_title, topic_id, topic_text, topic_index, 
     knowledge["terms"] = key_terms
 
     return populate_legacy_keys_on_knowledge(knowledge)
+
 
 
 def _call_llm_to_extract_knowledge(topic_title: str, cleaned_text: str, gemini_key: str = None, ollama_url: str = None) -> dict:
@@ -918,7 +906,7 @@ Return ONLY a JSON object with this exact structure (no markdown wrapper, no oth
 # ── Two-Pass LLM Pipeline ────────────────────────────────────────────────────
 
 def _call_gemini_raw(prompt: str, api_key: str, json_mode: bool = False) -> str:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [{"parts": [{"text": prompt}]}]

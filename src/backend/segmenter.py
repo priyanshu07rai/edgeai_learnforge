@@ -97,18 +97,22 @@ def get_semantic_boundaries(segments, target_k):
     return boundaries
 
 def label_segment_with_llama(text_snippet, ollama_url):
-    prompt = f"""You are a specialized educational AI content compiler.
+    prompt = f"""You are a specialized educational content compiler.
 Analyze this short section of a video transcript (which may be in Hindi, Hinglish, English, or mixed language).
 
 Transcript block:
 {text_snippet}
 
 Instructions:
-1. Identify the core educational concept taught in this block.
-2. Formulate a 1-sentence summary of the concept in English.
-3. Generate a professional English topic title (maximum 5 words) based on the summary. The title must be in English even if the transcript is in Hindi or Hinglish. Do not transliterate or include Hindi characters.
-4. Output your response in this exact format:
-SUMMARY: [1-sentence summary of the concept in English]
+1. Identify the CORE EDUCATIONAL CONCEPT or TOPIC being taught in this block.
+2. Generate a professional English topic title (3-6 words) for this concept.
+   - The title must describe WHAT IS BEING TAUGHT, not HOW the teacher is talking.
+   - DO NOT use conversational words like "Alright", "Okay", "Basically", "So", "Now", "Well", "Right", "Maybe", "Actually", "Obviously", "Literally", "Gemini", "Video", "Course", "Tutorial", "Lecture", "Let me", "Let's".
+   - DO NOT number the topic (no "Part 1", "Section 1", "Topic 1").
+   - The title should work as a chapter heading in a textbook.
+   - Examples of GOOD titles: "Stack Memory Allocation", "Photosynthesis Light Reactions", "French Revolution Causes", "SQL JOIN Operations", "Gradient Descent Optimization"
+   - Examples of BAD titles: "Alright Really Maybe 1", "Okay Let's Start", "Basically Your 6"
+3. Output your response in this exact format:
 TITLE: [English Topic Title]
 """
     try:
@@ -137,8 +141,32 @@ TITLE: [English Topic Title]
             # Discard Devanagari (Hindi characters) and let fallback handle it in English
             if re.search(r'[\u0900-\u097f]', title):
                 return None
+
+            # ── Universal quality gate: reject filler-contaminated titles ────────
+            # These conversational words indicate the LLM returned a bad title.
+            # This check is domain-agnostic — works for any video topic.
+            _FILLER_TITLE_WORDS = {
+                'alright', 'all right', 'okay', 'ok', 'so', 'well', 'right',
+                'yes', 'yeah', 'yep', 'nope', 'basically', 'actually', 'obviously',
+                'literally', 'generally', 'essentially', 'just', 'kind',
+                'maybe', 'perhaps', 'certainly', 'definitely', 'clearly',
+                'hello', 'hi', 'hey', 'welcome', 'everyone', 'guys',
+                'video', 'course', 'tutorial', 'lecture', 'lesson', 'class',
+                'let', 'lets', "let's", 'now', 'next', 'then',
+                'also', 'too', 'moreover', 'furthermore',
+                'intro', 'introduction', 'overview', 'summary',
+                'today', 'gonna', 'going',
+            }
+            title_words_lower = [w.lower() for w in title.split()]
+            # Reject if first word is a filler word (strong signal of bad title)
+            if title_words_lower and title_words_lower[0] in _FILLER_TITLE_WORDS:
+                return None
+            # Reject if majority (>50%) of title words are filler
+            filler_count = sum(1 for w in title_words_lower if w in _FILLER_TITLE_WORDS)
+            if len(title_words_lower) > 0 and filler_count / len(title_words_lower) > 0.5:
+                return None
                 
-            if title and len(title) > 2 and len(title.split()) <= 8:
+            if title and len(title) > 4 and len(title.split()) <= 8:
                 return title
     except Exception:
         pass
@@ -147,34 +175,73 @@ TITLE: [English Topic Title]
 def label_segment_heuristic(text, segment_index=None):
     """
     Universal topic namer — works for any subject (chemistry, math, CS, history, etc.)
-    Avoids hardcoded DRF/React keywords that falsely match non-CS content.
+    Picks the most meaningful content words from the transcript segment.
+    Falls back to "Segment N" only when no meaningful words can be found.
     """
     text_clean = text.strip()
     text_lower = text_clean.lower()
     words_in_text = re.findall(r'\b[a-z]{3,}\b', text_lower)
     suffix = f" {segment_index + 1}" if segment_index is not None else ""
 
-    # ── Extract meaningful noun phrases from capitalized words in content ──────
-    # Works well for post-Whisper translated text as Whisper capitalizes key entities.
-    capitalized = re.findall(r'\b[A-Z][a-z]{3,}\b', text_clean)
-    # Filter out common stop words
-    stop = {"This", "That", "They", "Their", "There", "Here", "Have", "Will",
-            "What", "When", "Where", "Which", "Then", "Also", "With", "From",
-            "Into", "About", "Because", "After", "Before", "Some", "More", "Very",
-            "Just", "Like", "Make", "Take", "Look", "Okay", "Right"}
-    capitalized = [w for w in capitalized if w not in stop]
+    # ── Universal filler / stop words — not domain-specific ──────────────────
+    # These words appear in speech of ANY topic and never make good topic titles.
+    UNIVERSAL_STOP = {
+        # Conversation openers / greetings
+        "alright", "okay", "right", "so", "well", "now", "then", "also",
+        "hello", "welcome", "everyone", "guys", "folks", "friends",
+        # Filler adjectives / adverbs
+        "basically", "actually", "literally", "obviously", "generally",
+        "essentially", "just", "kind", "really", "very", "quite", "pretty",
+        "maybe", "perhaps", "certainly", "definitely",
+        # Generic teaching meta-words
+        "this", "that", "these", "those", "here", "there", "some", "more",
+        "most", "many", "much", "any", "all", "each", "every", "both",
+        "same", "other", "such", "like", "than", "then", "way", "thing",
+        "things", "part", "parts", "section", "bit", "bits",
+        # Video/course meta-words
+        "video", "course", "tutorial", "lecture", "lesson", "class", "topic",
+        "segment", "module", "episode", "series", "chapter",
+        "intro", "introduction", "overview", "summary", "recap",
+        # Personal pronouns and auxiliary verbs
+        "going", "gonna", "will", "would", "could", "should", "have",
+        "about", "from", "into", "with", "through", "after", "before",
+        "what", "when", "where", "which", "who", "why", "how",
+        "make", "take", "look", "know", "think", "talk", "call", "give",
+        "tell", "show", "explain", "define", "discuss", "cover",
+        # Conversational back-channel words
+        "okay", "sir", "sorry", "please", "thank", "thanks",
+    }
+
+    # ── Extract meaningful capitalized noun phrases ───────────────────────────
+    # Whisper capitalizes proper nouns and entity names — these are the best topic signals
+    capitalized = re.findall(r'\b[A-Z][a-zA-Z]{3,}\b', text_clean)
+    
+    # Filter out stop words and obvious conversational words
+    cap_stop = {w.capitalize() for w in UNIVERSAL_STOP} | {
+        "This", "That", "They", "Their", "There", "Here", "Have", "Will",
+        "What", "When", "Where", "Which", "Then", "Also", "With", "From",
+        "Into", "About", "Because", "After", "Before", "Some", "More", "Very",
+        "Just", "Like", "Make", "Take", "Look", "Okay", "Right", "Well",
+        "Alright", "Basically", "Actually", "Obviously", "Generally", "Literally",
+        "Maybe", "Perhaps", "Certainly", "Definitely", "Today", "First", "Second",
+    }
+    capitalized = [w for w in capitalized if w not in cap_stop]
+    
     if len(capitalized) >= 2:
-        # Avoid repetitive words
-        unique_caps = list(dict.fromkeys(capitalized))
+        unique_caps = list(dict.fromkeys(capitalized))  # preserve order, deduplicate
         if len(unique_caps) >= 2:
             return " ".join(unique_caps[:3]) + suffix
 
-    # ── Longest content words as topic name ───────────────────────────────────
-    long_words = sorted(set(w for w in words_in_text if len(w) >= 6), key=len, reverse=True)
+    # ── Fall back to longest meaningful words ─────────────────────────────────
+    meaningful_words = [
+        w for w in words_in_text
+        if len(w) >= 5 and w not in UNIVERSAL_STOP
+    ]
+    long_words = sorted(set(meaningful_words), key=len, reverse=True)
     if long_words:
         return " ".join(long_words[:3]).title()
 
-    return f"Topic{suffix}"
+    return f"Segment{suffix}"
 
 def segment_transcript_llama(transcript_text, segments, lang_code="en", ollama_url="http://localhost:11434/api/generate"):
     if not segments:

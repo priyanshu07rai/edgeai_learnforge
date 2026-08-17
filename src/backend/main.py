@@ -722,6 +722,19 @@ async def process_transcript(req: ProcessRequest, background_tasks: BackgroundTa
     if not os.path.exists(transcript_path):
         raise HTTPException(status_code=404, detail="Unable to process transcript.")
 
+    # ── Clear stale AI-generated caches ──────────────────────────────────────
+    # Ensures that every /process call starts fresh — old garbage from a previous
+    # bad LLM run will NOT be served. Works for any video topic/domain.
+    _CACHE_DIRS = ["notes_cache", "flashcards_cache", "quiz_cache", "graph_cache"]
+    for cache_dir_name in _CACHE_DIRS:
+        stale_dir = os.path.join(video_dir, cache_dir_name)
+        if os.path.exists(stale_dir):
+            try:
+                shutil.rmtree(stale_dir)
+                print(f"[LearnForge API] Cleared stale cache: {cache_dir_name}/")
+            except Exception as e:
+                print(f"[LearnForge API] Warning: could not clear {cache_dir_name}/: {e}")
+
     try:
         with open(transcript_path, "r", encoding="utf-8") as f:
             data = json.load(f)
