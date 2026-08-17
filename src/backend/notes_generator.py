@@ -929,22 +929,24 @@ Return ONLY a JSON object with this exact structure (no markdown wrapper, no oth
 # ── Two-Pass LLM Pipeline ────────────────────────────────────────────────────
 
 def _call_gemini_raw(prompt: str, api_key: str, json_mode: bool = False) -> str:
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key={api_key}"
+    models = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
     headers = {"Content-Type": "application/json"}
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
-    }
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
     if json_mode:
         payload["generationConfig"] = {"responseMimeType": "application/json"}
-    try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=40)
-        if resp.status_code == 200:
-            return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        else:
-            print(f"[Gemini API] Error response: {resp.status_code} - {resp.text}")
-    except Exception as e:
-        print(f"[Gemini API] Exception calling Gemini: {e}")
+        
+    for model_name in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=40)
+            if resp.status_code == 200:
+                return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+            else:
+                print(f"[Gemini API] [{model_name}] Status {resp.status_code} - trying next fallback model...")
+        except Exception as e:
+            print(f"[Gemini API] [{model_name}] Exception: {e}")
     return ""
+
 
 
 def _call_ollama_raw(prompt: str, ollama_url: str, json_mode: bool = False) -> str:

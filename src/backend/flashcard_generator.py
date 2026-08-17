@@ -222,18 +222,20 @@ Return ONLY valid JSON (no markdown wrapper, no other text):
 
     raw = ""
     if gemini_key:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"responseMimeType": "application/json"}
-        }
-        try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=30)
-            if resp.status_code == 200:
-                raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except Exception as e:
-            print(f"[Gemini API] Flashcards failed: {e}")
+        for model_name in ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
+            headers = {"Content-Type": "application/json"}
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"responseMimeType": "application/json"}
+            }
+            try:
+                resp = requests.post(url, json=payload, headers=headers, timeout=30)
+                if resp.status_code == 200:
+                    raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    break
+            except Exception as e:
+                print(f"[Gemini API] [{model_name}] Flashcards failed: {e}")
     elif ollama_url:
         try:
             resp = requests.post(

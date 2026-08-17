@@ -1,4 +1,4 @@
-﻿"""
+"""
 qa_engine.py — Redesigned educational tutor Q&A engine.
 Supports four modes: transcript, teacher (default), knowledge, hybrid.
 Detects user intent (Comparison, Analogy, Code, Procedure, Definition).
@@ -196,24 +196,25 @@ def _llm_answer(question: str, context: str, mode: str, intent: str, temperature
     gemini_key = os.environ.get("GEMINI_API_KEY")
 
     if gemini_key:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
-        headers = {"Content-Type": "application/json"}
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": temperature
+        for model_name in ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
+            headers = {"Content-Type": "application/json"}
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": temperature
+                }
             }
-        }
-        try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=25)
-            if resp.status_code == 200:
-                raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if raw and len(raw) > 10:
-                    return raw
-            else:
-                print(f"[LearnForge QA] Gemini API error: {resp.status_code} - {resp.text}")
-        except Exception as e:
-            print(f"[LearnForge QA] Gemini API exception: {e}")
+            try:
+                resp = requests.post(url, json=payload, headers=headers, timeout=25)
+                if resp.status_code == 200:
+                    raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    if raw and len(raw) > 10:
+                        return raw
+                else:
+                    print(f"[LearnForge QA] [{model_name}] Status {resp.status_code}")
+            except Exception as e:
+                print(f"[LearnForge QA] [{model_name}] Exception: {e}")
 
     # Fallback to Ollama
     try:
