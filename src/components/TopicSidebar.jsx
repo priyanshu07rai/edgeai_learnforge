@@ -5,7 +5,7 @@ const STATUS_DOT = {
   strong:      { cls: 'bg-emerald-500', title: 'Mastered (≥80%)' },
   medium:      { cls: 'bg-amber-500', title: 'Good (60-79%)' },
   weak:        { cls: 'bg-red-500 animate-pulse', title: 'Needs Revision (<60%)' },
-  unattempted: { cls: 'bg-[#333]', title: 'Not attempted' },
+  unattempted: { cls: 'bg-slate-300 dark:bg-[#333]', title: 'Not attempted' },
 };
 
 /**
@@ -16,19 +16,19 @@ export default function TopicSidebar({ topics, activeTopicIdx, onTopicClick, vid
   if (!topics || topics.length === 0) return null;
 
   return (
-    <div className="w-[280px] shrink-0 border-r border-[#262626] dark:border-[#262626] light:border-slate-200 h-[500px] flex flex-col bg-[#111111] dark:bg-[#111111] light:bg-white text-left select-none overflow-hidden transition-colors duration-300">
+    <div className="w-[280px] shrink-0 border-2 border-slate-200 dark:border-[#262626] h-[550px] flex flex-col bg-white dark:bg-[#111111] text-left select-none overflow-hidden transition-colors duration-300 rounded-3xl shadow-xl">
       <div className="flex-1 overflow-y-auto p-4 space-y-1.5 custom-scrollbar">
         {/* Course Overview button */}
         <button
           onClick={() => onTopicClick(-1)}
-          className={`w-full text-left text-sm py-2 px-3 rounded-md transition-all duration-150 cursor-pointer flex items-center gap-2.5 border ${
+          className={`w-full text-left text-sm py-2.5 px-3 rounded-xl transition-all duration-150 cursor-pointer flex items-center gap-2.5 border-2 ${
             activeTopicIdx === -1
-              ? 'border-[#262626] dark:border-[#262626] light:border-indigo-200 bg-[#0B0B0B] dark:bg-[#0B0B0B] light:bg-indigo-50/80 text-[#7C3AED] dark:text-[#7C3AED] light:text-indigo-600 font-semibold shadow-inner'
-              : 'border-transparent text-[#A3A3A3] dark:text-[#A3A3A3] light:text-slate-600 hover:text-[#F5F5F5] light:hover:text-slate-900 hover:bg-[#0B0B0B]/50 light:hover:bg-slate-100'
+              ? 'border-indigo-200 dark:border-[#262626] bg-indigo-50/80 dark:bg-[#0B0B0B] text-indigo-600 dark:text-[#7C3AED] font-extrabold shadow-inner'
+              : 'border-transparent text-slate-600 dark:text-[#A3A3A3] hover:text-slate-900 dark:hover:text-[#F5F5F5] hover:bg-slate-100 dark:hover:bg-[#0B0B0B]/50 font-bold'
           }`}
         >
           <span>📌</span>
-          <span className="truncate font-medium">Course Overview</span>
+          <span className="truncate">Course Overview</span>
         </button>
 
         {topics.map((topic, idx) => {
@@ -40,10 +40,10 @@ export default function TopicSidebar({ topics, activeTopicIdx, onTopicClick, vid
             <button
               key={idx}
               onClick={() => onTopicClick(idx)}
-              className={`w-full text-left text-sm py-2 px-3 rounded-md transition-all duration-150 cursor-pointer flex items-center gap-2.5 border ${
+              className={`w-full text-left text-sm py-2.5 px-3 rounded-xl transition-all duration-150 cursor-pointer flex items-center gap-2.5 border-2 ${
                 isActive
-                  ? 'border-[#262626] dark:border-[#262626] light:border-indigo-200 bg-[#0B0B0B] dark:bg-[#0B0B0B] light:bg-indigo-50/80 text-[#7C3AED] dark:text-[#7C3AED] light:text-indigo-600 font-semibold shadow-inner'
-                  : 'border-transparent text-[#A3A3A3] dark:text-[#A3A3A3] light:text-slate-600 hover:text-[#F5F5F5] light:hover:text-slate-900 hover:bg-[#0B0B0B]/50 light:hover:bg-slate-100'
+                  ? 'border-indigo-200 dark:border-[#262626] bg-indigo-50/80 dark:bg-[#0B0B0B] text-indigo-600 dark:text-[#7C3AED] font-extrabold shadow-inner'
+                  : 'border-transparent text-slate-600 dark:text-[#A3A3A3] hover:text-slate-900 dark:hover:text-[#F5F5F5] hover:bg-slate-100 dark:hover:bg-[#0B0B0B]/50 font-bold'
               }`}
             >
               {/* Accuracy status dot */}
@@ -53,12 +53,12 @@ export default function TopicSidebar({ topics, activeTopicIdx, onTopicClick, vid
               />
               <span className="truncate">{topic.title}</span>
               {topic.density_badge && (
-                <span className="ml-2 shrink-0 text-[10px] select-none opacity-85" title={`Density: ${topic.density}`}>
+                <span className="ml-2 shrink-0 text-[10px] select-none opacity-85 font-black" title={`Density: ${topic.density}`}>
                   {topic.density_badge}
                 </span>
               )}
               {status === 'weak' && (
-                <span className="ml-auto shrink-0 text-[9px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 rounded px-1.5 py-0.5">
+                <span className="ml-auto shrink-0 text-[9px] font-bold text-red-400 bg-red-500/10 border border-red-500/20 rounded px-1.5 py-0.5 animate-pulse">
                   ↻
                 </span>
               )}
@@ -69,14 +69,14 @@ export default function TopicSidebar({ topics, activeTopicIdx, onTopicClick, vid
 
       {/* Legend */}
       {videoId && (
-        <div className="px-4 py-3 border-t border-[#1e1e1e] flex flex-wrap gap-x-3 gap-y-1">
+        <div className="px-4 py-3 border-t border-slate-200 dark:border-[#1e1e1e] flex flex-wrap gap-x-3 gap-y-1">
           {[
             { cls: 'bg-emerald-500', label: 'Mastered' },
             { cls: 'bg-amber-500', label: 'Good' },
             { cls: 'bg-red-500', label: 'Weak' },
-            { cls: 'bg-[#333]', label: 'New' },
+            { cls: 'bg-slate-300 dark:bg-[#333]', label: 'New' },
           ].map(item => (
-            <span key={item.label} className="flex items-center gap-1 text-[10px] text-[#525252]">
+            <span key={item.label} className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-[#525252] font-semibold">
               <span className={`w-1.5 h-1.5 rounded-full ${item.cls}`} />
               {item.label}
             </span>

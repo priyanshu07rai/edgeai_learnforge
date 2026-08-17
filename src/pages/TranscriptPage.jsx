@@ -456,7 +456,7 @@ export default function TranscriptPage() {
             <TopicDropdown
               topics={topics}
               activeTopicIdx={activeTopicIdx}
-              onSelectTopic={handleTopicSelect}
+              onTopicClick={handleTopicSelect}
             />
 
             {/* 2-Column layout: Sidebar + Study Space */}
@@ -464,10 +464,12 @@ export default function TranscriptPage() {
               <TopicSidebar
                 topics={topics}
                 activeTopicIdx={activeTopicIdx}
-                onSelectTopic={handleTopicSelect}
+                onTopicClick={handleTopicSelect}
+                videoId={videoId}
                 overallSummary={overallSummary}
                 isLoadingSummary={isLoadingSummary}
               />
+
 
               <div className="flex-1 bg-white dark:bg-[#111111] border-2 border-slate-300 dark:border-[#262626] rounded-3xl p-6 shadow-xl shadow-slate-200/50 dark:shadow-2xl">
                 <TranscriptViewer
