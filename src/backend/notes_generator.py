@@ -552,179 +552,202 @@ def _run_pipeline_for_knowledge(topic_title, topic_id, topic_text, topic_index, 
 
 def _call_llm_to_extract_knowledge(topic_title: str, cleaned_text: str, gemini_key: str = None, ollama_url: str = None) -> dict:
     """
-    Three-pass LLM pipeline that extracts the exact Knowledge Layer JSON schema.
+    Smart LLM extraction pipeline — adapts to model capability:
+    - Gemini (large model): 2-pass pipeline with full JSON schema
+    - Ollama 1B (small model): 4 small focused prompts, each asking ONE thing reliably
     """
-    # Step 1: Cleaning Agent
-    cleaning_prompt = f"""You are
+    if gemini_key:
+        return _call_gemini_full_pipeline(topic_title, cleaned_text, gemini_key)
+    elif ollama_url:
+        return _call_ollama_focused_pipeline(topic_title, cleaned_text, ollama_url)
+    return None
 
-CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
- a transcript cleaning assistant.
-Your job is to clean this transcript section for educational study notes.
-- Remove YouTube filler words, announcements, sponsor slots, subscribe requests, greetings (e.g., "Hello everyone", "Welcome back", "Subscribe to the channel").
-- Remove conversational filler words and spoken narration (e.g., "okay", "uh", "all right", "you know", "let's see", "one second", "now let's go here", "let's start", "I am going to").
-- Convert spoken conversational cues to clean declarative instructions.
-  Example: "okay so now let's go to urls.py" -> "Go to urls.py."
-- Keep ONLY clean educational facts, concepts, explanations, and instructions.
-- Convert all first-person speech ("I", "we", "my", "we", "us", "our", "let's") or second-person speech ("you") to objective, third-person statements.
+
+def _call_gemini_full_pipeline(topic_title: str, cleaned_text: str, gemini_key: str) -> dict:
+    """
+    2-pass Gemini pipeline: Clean → Extract structured JSON.
+    Gemini can handle complex JSON reliably.
+    """
+    # Pass 1: Clean the transcript text
+    cleaning_prompt = f"""You are a transcript cleaning assistant. Clean this transcript for study notes.
+- Remove all filler words, greetings, subscribe/like requests, and conversational openers.
+- Remove: "hello everyone", "welcome back", "in this video", "let's start", "okay so", "alright", etc.
+- Convert first-person ("I will show you", "let's do") to declarative ("The following demonstrates").
+- Keep ONLY educational facts, concepts, definitions, examples, and procedures.
+- Write in clean, objective English only.
 
 Topic: {topic_title}
-Transcript chunk:
+Transcript:
 {cleaned_text[:3500]}
 
-Return ONLY the cleaned educational text, maintaining the factual information without conversational fillers or spoken narration. Do not include markdown formatting or warnings."""
+Return ONLY the cleaned educational text."""
 
-    if gemini_key:
-        raw_cleaned = _call_gemini_raw(cleaning_prompt, gemini_key, json_mode=False)
-    elif ollama_url:
-        raw_cleaned = _call_ollama_raw(cleaning_prompt, ollama_url, json_mode=False)
-    else:
-        return None
-
+    raw_cleaned = _call_gemini_raw(cleaning_prompt, gemini_key, json_mode=False)
     if not raw_cleaned or len(raw_cleaned.strip()) < 20:
-        print("[LearnForge Notes] Cleaning Agent failed or returned empty text.")
         raw_cleaned = cleaned_text
 
-    # Step 2: Knowledge Extraction Agent
-    extraction_prompt = f"""You are
-
-CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
- an educational knowledge extraction engine.
-Your task is to convert this free-form educational text into structured concepts and facts.
-Do NOT summarize yet. Just extract the facts and entities as they are described.
-Do NOT assume or invent any facts or patterns not explicitly present in the text.
-Strict Third-Person Objective Voice Only: Rewrite concepts and sentences in objective, third-person voice. Do NOT include first-person terms ("I", "we", "my", "our", "us") in any extracted concepts, definitions, examples, or mistakes.
+    # Pass 2: Extract structured knowledge JSON
+    extraction_prompt = f"""You are an educational knowledge extraction engine.
+Convert this educational text into structured study notes for the topic "{topic_title}".
+Write in clear, objective English. Do NOT copy transcript sentences verbatim — rewrite them as clean factual statements.
 
 Educational Text:
-{raw_cleaned}
+{raw_cleaned[:3000]}
 
-Return ONLY a JSON object with this exact structure (no markdown wrapper, no other text):
+Return ONLY a JSON object (no markdown, no extra text):
 {{
   "concept": "{topic_title}",
-  "definition": "A formal, clear textbook definition of the concept",
-  "explanation": "Detailed explanation of the concept's core principles and working mechanism",
-  "analogy": "A memorable real-world analogy to help explain the concept",
-  "examples": ["List of practical examples or use cases mentioned"],
-  "procedures": ["List of step-by-step implementation procedures or steps"],
-  "misconceptions": ["List of misconceptions or what the concept is NOT"],
-  "applications": ["List of features, advantages, or practical applications"],
-  "commands": ["List of terminal commands or setup commands"],
-  "formulas": ["List of mathematical formulas or equations if any"],
-  "warnings": ["List of warnings, common mistakes, or pitfalls"],
-  "best_practices": ["List of best practices or key takeaways"],
-  "interview_questions": ["2-3 interview-style review questions on this concept"],
-  "keywords": ["List of key noun technical terms (keywords)"],
-  "code": ["List of code snippets or code blocks"],
-  "output": ["Expected outputs of code/commands if mentioned"],
-  "summary": "A 1-2 sentence high-level summary of the entire concept"
-}}"""
-
-    if gemini_key:
-        raw_pass1 = _call_gemini_raw(extraction_prompt, gemini_key, json_mode=True)
-    elif ollama_url:
-        raw_pass1 = _call_ollama_raw(extraction_prompt, ollama_url, json_mode=True)
-    else:
-        return None
-
-    if not raw_pass1:
-        return None
-
-    # Parse JSON from Pass 1
-    extracted_knowledge = None
-    for match in re.finditer(r'\{', raw_pass1):
-        try:
-            candidate = raw_pass1[match.start():]
-            extracted_knowledge = json.loads(candidate[:candidate.rfind('}') + 1])
-            break
-        except Exception:
-            continue
-
-    if not extracted_knowledge:
-        print(f"[LearnForge Notes] Failed to parse Knowledge Extraction JSON: {raw_pass1[:200]}")
-        return None
-
-    # Step 3: Teacher Agent (Refinement)
-    teacher_prompt = f"""# Role and Objective
-CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
-
-You are a senior educational content specialist. Your job is to refine raw knowledge units extracted from a lecture transcript into a structured Knowledge Layer JSON payload that reads like professional lecture notes — not a summary, not a transcript fragment, and not a bullet dump.
-
-# Core Quality Rules
-- **Truthfulness First:** Only include information that is ACTUALLY present in the extracted knowledge. Do NOT invent new facts, steps, commands, or examples.
-- **Cohesive Explanation:** The \"explanation\" field MUST be written as a flowing, connected narrative paragraph. It should logically connect the concept's core ideas in the order the instructor presented them. Do not reduce it to a single sentence — expand it to capture the full reasoning chain from the transcript.
-- **Preserve Instructor Reasoning:** If the instructor gave an analogy, a "why" explanation, or a step-by-step breakdown, ensure this reasoning is captured in the \"explanation\" field or the appropriate list field. Do NOT compress or omit it.
-- **No Placeholder Text:** Never write \"N/A\", \"Not mentioned\", or empty strings. If a field has no data, use an empty list [] or empty string \"\".
-- **Third-Person Objective Voice:** Rewrite first-person instructor speech objectively (e.g., \"I'll show you\" → \"The following example demonstrates\"). Do NOT use \"I\", \"we\", \"you\", \"let's\", or \"the instructor\".
-- **Zero Promotional Content:** Remove any channel promotions, subscribe requests, or off-topic personal remarks.
-
-Extracted Knowledge:
-{json.dumps(extracted_knowledge, indent=2)}
-
-Return ONLY a JSON object with this exact structure (no markdown wrapper, no other text):
-{{
-  "concept": "{topic_title}",
-  "definition": "A formal, precise 1-2 sentence textbook definition of the concept — what it IS and what it does.",
-  "explanation": "A cohesive, multi-sentence paragraph (4-8 sentences) explaining the concept's core principles, how it works, and why it matters — following the instructor's logical flow. Connect ideas with transitional language. This should read like a polished lecture note, not a list of facts.",
-  "analogy": "A memorable real-world analogy that the instructor used or that clearly illustrates the concept. Leave empty string if none.",
-  "examples": ["Specific concrete example 1 from the transcript", "Specific concrete example 2"],
+  "definition": "A formal 1-2 sentence textbook definition of what this concept IS.",
+  "explanation": "A cohesive 3-6 sentence paragraph explaining how it works and why it matters. Connect ideas logically. Do not use bullet points here.",
+  "analogy": "A real-world analogy if one was mentioned. Empty string if none.",
+  "examples": ["Specific concrete example 1", "Specific concrete example 2"],
   "procedures": ["Step 1: specific action", "Step 2: specific action"],
-  "misconceptions": ["Common misconception 1 about this concept"],
-  "applications": ["Real-world application or use case 1", "Application 2"],
-  "commands": ["exact terminal command 1", "exact terminal command 2"],
-  "formulas": ["formula or equation if any"],
-  "warnings": ["Specific warning or common mistake 1"],
-  "best_practices": ["Best practice or key takeaway 1"],
-  "interview_questions": ["A specific interview question on this concept?", "Another relevant question?"],
+  "applications": ["Real-world use case 1", "Real-world use case 2"],
+  "commands": ["exact command 1 if any"],
+  "warnings": ["Common mistake or pitfall 1 if mentioned"],
+  "best_practices": ["Key takeaway or best practice 1"],
+  "interview_questions": ["Specific interview question about this concept?", "Another question?"],
   "keywords": ["KeyTerm1", "KeyTerm2", "KeyTerm3"],
-  "code": ["actual code snippet if present"],
-  "output": ["expected output if mentioned"],
-  "summary": "2-3 sentences capturing what this topic teaches and why it is important for learners — based only on the actual content."
+  "code": ["code snippet if present"],
+  "summary": "2-3 sentences: what this topic teaches and why it matters."
 }}"""
 
-    if gemini_key:
-        raw_pass2 = _call_gemini_raw(teacher_prompt, gemini_key, json_mode=True)
-    elif ollama_url:
-        raw_pass2 = _call_ollama_raw(teacher_prompt, ollama_url, json_mode=True)
-    else:
+    raw_json = _call_gemini_raw(extraction_prompt, gemini_key, json_mode=True)
+    if not raw_json:
         return None
 
-    if not raw_pass2:
-        return None
-
-    # Parse JSON from Pass 2
-    final_knowledge = None
-    for match in re.finditer(r'\{', raw_pass2):
+    for match in re.finditer(r'\{', raw_json):
         try:
-            candidate = raw_pass2[match.start():]
-            final_knowledge = json.loads(candidate[:candidate.rfind('}') + 1])
-            break
+            candidate = raw_json[match.start():]
+            result = json.loads(candidate[:candidate.rfind('}') + 1])
+            if result.get("definition") or result.get("explanation"):
+                return result
         except Exception:
             continue
+    return None
 
-    if not final_knowledge:
-        print(f"[LearnForge Notes] Failed to parse Teacher Agent Refinement JSON: {raw_pass2[:200]}")
-        return None
 
-    return final_knowledge
+def _call_ollama_focused_pipeline(topic_title: str, cleaned_text: str, ollama_url: str) -> dict:
+    """
+    Ollama 1B pipeline: 4 small, focused prompts — each asks ONE specific thing.
+    Small models fail on complex multi-field JSON but work well on single focused questions.
+    Results are assembled into the full Knowledge Layer schema.
+    """
+    # Limit input to what the 1B model can handle without degrading
+    text_snippet = cleaned_text[:2000]
 
-    print(f"[LearnForge Notes]    heuristic: {len(detailed['key_points'])} key points, {len(detailed['important_terms'])} terms")
+    def _ask(prompt: str, is_list: bool = False):
+        """Ask Ollama one focused question, return text answer."""
+        try:
+            resp = requests.post(
+                ollama_url,
+                json={
+                    "model": "llama3.2:1b",
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {"temperature": 0.1, "num_predict": 300}
+                },
+                timeout=8.0
+            )
+            if resp.status_code == 200:
+                answer = resp.json().get("response", "").strip()
+                # Remove any meta-commentary like "Sure, here is..." or "Based on the text..."
+                answer = re.sub(r'^(?:sure[,.]?|here(?:\s+is)?[,:]?|based\s+on\s+[^,]+[,:]?|the\s+answer\s+is[:]?)\s*', '', answer, flags=re.I).strip()
+                return answer
+        except Exception:
+            pass
+        return ""
 
-    result = {
-        "topic": topic_title,
-        "topic_index": topic_index,
-        "summary": detailed.get("summary", ""),
-        "key_points": detailed.get("key_points", []),
-        "important_terms": key_terms,
-        "markdown": detailed.get("markdown", ""),
-        "detailed": detailed,
-        "revision": revision,
-        "density": detailed.get("density", "Light"),
-        "density_badge": detailed.get("density_badge", "🟢 Light")
+    print(f"[LearnForge Notes] [Ollama 1B] Running focused 4-prompt pipeline for '{topic_title}'...")
+
+    # Prompt 1: Definition — "What is X in one clear sentence?"
+    definition_raw = _ask(
+        f"""Read this transcript excerpt about "{topic_title}" and write ONE clear textbook definition sentence.
+Do NOT copy the transcript. Write a clean, objective definition.
+Do NOT start with "I", "we", "you", or "In this video".
+
+Transcript excerpt:
+{text_snippet}
+
+Write only the definition sentence (no labels, no explanation):"""
+    )
+
+    # Prompt 2: Explanation — "Explain the core concept in 2-4 sentences"
+    explanation_raw = _ask(
+        f"""Read this transcript excerpt about "{topic_title}".
+Write 2-4 clear sentences explaining the core concept — how it works and why it matters.
+Do NOT copy the transcript verbatim. Do NOT start with "I", "we", "you", "In this video", "Alright", or "Okay".
+Write in objective, third-person style.
+
+Transcript excerpt:
+{text_snippet}
+
+Write only the explanation (no labels):"""
+    )
+
+    # Prompt 3: Key points — "List 3 key facts as bullet points"
+    keypoints_raw = _ask(
+        f"""Read this transcript excerpt about "{topic_title}".
+List exactly 3 key facts or takeaways as short bullet points.
+Each bullet must be a complete fact, not a transcript sentence.
+Format: - [fact]
+
+Transcript excerpt:
+{text_snippet}
+
+Key facts:"""
+    )
+
+    # Prompt 4: Summary — "Summarize in one sentence"
+    summary_raw = _ask(
+        f"""In ONE sentence, summarize what "{topic_title}" is and why it is important, based on this excerpt:
+{text_snippet[:800]}
+
+Summary sentence:"""
+    )
+
+    # Parse key points into a list
+    keypoints = []
+    for line in keypoints_raw.splitlines():
+        line = line.strip().lstrip('-•*123456789. ').strip()
+        if len(line) > 15 and not line.lower().startswith(('sure', 'here', 'based', 'key fact', 'key point')):
+            keypoints.append(line)
+
+    # Validate outputs — if they look like transcript copies or are empty, use fallback
+    def _is_good(text: str) -> bool:
+        if not text or len(text.strip()) < 15:
+            return False
+        bad_starters = ('alright', 'okay', 'so ', 'in this video', 'in this course',
+                        'my name is', 'hello', 'welcome', 'i am', "i'm", 'we are',
+                        'today we', 'in this lecture')
+        return not any(text.lower().strip().startswith(b) for b in bad_starters)
+
+    definition = definition_raw if _is_good(definition_raw) else f"{topic_title} is a key concept covered in this section."
+    explanation = explanation_raw if _is_good(explanation_raw) else " ".join(keypoints[:2]) if keypoints else ""
+    summary = summary_raw if _is_good(summary_raw) else definition
+
+    print(f"[LearnForge Notes] [Ollama 1B] def={len(definition)}c, exp={len(explanation)}c, kp={len(keypoints)}, sum={len(summary)}c")
+
+    return {
+        "concept": topic_title,
+        "definition": definition,
+        "explanation": explanation,
+        "analogy": "",
+        "examples": [],
+        "procedures": keypoints[2:] if len(keypoints) > 2 else [],
+        "applications": keypoints[:2] if keypoints else [],
+        "commands": [],
+        "formulas": [],
+        "warnings": [],
+        "best_practices": keypoints[:3],
+        "interview_questions": [f"What is {topic_title} and what is its significance?"],
+        "keywords": [],
+        "code": [],
+        "output": [],
+        "summary": summary,
     }
-    
-    if topics_list:
-        result = apply_cross_topic_linking(topic_index, result, topics_list)
-        
-    return result
+
+
 
 
 def extract_deterministic_keywords(transcript_text: str, top_n=8) -> list:
