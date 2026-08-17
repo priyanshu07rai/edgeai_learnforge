@@ -15,7 +15,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import mimetypes
 
 DIST_DIR = Path(__file__).parent / "dist"
-BACKEND_HOST = "localhost"
+BACKEND_HOST = "127.0.0.1"
 BACKEND_PORT = 8000
 
 # React Router routes served by index.html (SPA)

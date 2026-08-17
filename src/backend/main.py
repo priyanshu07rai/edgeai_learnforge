@@ -972,14 +972,18 @@ async def get_flashcards(req: ProcessRequest):
 
 @app.get("/graph/{video_id}/{topic_index}")
 async def get_topic_graph(video_id: str, topic_index: int):
-    """Returns the generated Strict Knowledge Graph for a topic."""
+    """Returns the generated Strict Knowledge Graph for a topic (with dynamic generation fallback)."""
     video_dir = os.path.join(STORAGE_DIR, video_id)
-    cache_path = os.path.join(video_dir, "graph_cache", f"topic_{topic_index}_graph.json")
-    if os.path.exists(cache_path):
-        with open(cache_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    else:
-        raise HTTPException(status_code=404, detail="Knowledge Graph not found or still generating")
+    if not os.path.exists(video_dir):
+        raise HTTPException(status_code=404, detail="Video directory not found.")
+    try:
+        result = generate_graph_for_single_topic(video_id, topic_index, STORAGE_DIR)
+        if result:
+            return result
+        raise HTTPException(status_code=404, detail="Knowledge Graph not found or topic is not structural")
+    except Exception as e:
+        print(f"[LearnForge API] Graph generation error for topic {topic_index}: {e}")
+        raise HTTPException(status_code=500, detail="Graph generation failed.")
 
 @app.post("/quiz/generate")
 async def get_quiz(req: ProcessRequest):
