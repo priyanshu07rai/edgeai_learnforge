@@ -102,9 +102,13 @@ python3 -m spacy download en_core_web_sm || {
     echo -e "${YELLOW}Warning: spaCy model download failed. App will fall back to regex pre-cleaning.${NC}"
 }
 
-# ── 4. OLLAMA CONFIGURATION & MODEL PULL (SKIPPED FOR GEMINI CLOUD MODE) ──────
-echo -e "\n${YELLOW}[Step 4/6] Skipping local Ollama setup (Cloud Gemini Mode Enabled)...${NC}"
-echo "Note: The backend will automatically use the Google Gemini API (or heuristic extraction) for notes and flashcard generation, saving ~1.5GB of disk space."
+# ── 4. OLLAMA CONFIGURATION & MODEL PULL (OFFLINE JETSON ORIN) ───────────────
+echo -e "\n${YELLOW}[Step 4/6] Ensuring Ollama model 'llama3.2:1b' is ready...${NC}"
+if command -v ollama &> /dev/null; then
+    ollama pull llama3.2:1b || echo -e "${YELLOW}Warning: Could not pull llama3.2:1b. Ensure Ollama service is running.${NC}"
+else
+    echo -e "${YELLOW}Ollama CLI not found. Please install Ollama on Jetson Orin for local AI generation.${NC}"
+fi
 
 # ── 5. FRONTEND INSTALLATION AND BUILD ────────────────────────────────────────
 echo -e "\n${YELLOW}[Step 5/6] Building frontend assets...${NC}"

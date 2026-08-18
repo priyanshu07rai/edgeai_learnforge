@@ -256,7 +256,7 @@ def _randomize_quiz_options(quiz_list: list) -> list:
 
 # ── Per-topic generation ─────────────────────────────────────────────────
 
-def _generate_quiz_llm(topic_title: str, knowledge: dict, gemini_key: str = None, ollama_url: str = None):
+def _generate_quiz_llm(topic_title: str, knowledge: dict, ollama_url: str = OLLAMA_URL):
     prompt = f"""You are a senior educational assessment designer creating high-quality multiple-choice questions.
 
 CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
@@ -290,22 +290,7 @@ Return ONLY valid JSON (no markdown wrapper, no other text):
 
 
     raw = ""
-    if gemini_key:
-        for model_name in ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"responseMimeType": "application/json"}
-            }
-            try:
-                resp = requests.post(url, json=payload, headers=headers, timeout=30)
-                if resp.status_code == 200:
-                    raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    break
-            except Exception as e:
-                print(f"[Gemini API] [{model_name}] Quiz failed: {e}")
-    elif ollama_url:
+    if ollama_url:
         try:
             resp = requests.post(
                 ollama_url,
@@ -468,12 +453,6 @@ def generate_quiz_for_single_topic(
 
     questions = None
 
-    # Try Gemini if key is present
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if gemini_key and knowledge:
-        print(f"[LearnForge Quiz] Generating from knowledge schema using Gemini for [{topic_index}]...")
-        questions = _generate_quiz_llm(topic_title, knowledge, gemini_key=gemini_key)
-        
     # Try Ollama if online
     if not questions and knowledge:
         ollama_online = check_ollama_available(ollama_url)

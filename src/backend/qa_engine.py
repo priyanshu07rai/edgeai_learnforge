@@ -193,30 +193,7 @@ You are in HYBRID mode (merged context + general knowledge).
 
 def _llm_answer(question: str, context: str, mode: str, intent: str, temperature: float = 0.3) -> str:
     prompt = _build_prompt(question, context, mode, intent)
-    gemini_key = os.environ.get("GEMINI_API_KEY")
 
-    if gemini_key:
-        for model_name in ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={gemini_key}"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": temperature
-                }
-            }
-            try:
-                resp = requests.post(url, json=payload, headers=headers, timeout=25)
-                if resp.status_code == 200:
-                    raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    if raw and len(raw) > 10:
-                        return raw
-                else:
-                    print(f"[LearnForge QA] [{model_name}] Status {resp.status_code}")
-            except Exception as e:
-                print(f"[LearnForge QA] [{model_name}] Exception: {e}")
-
-    # Fallback to Ollama
     try:
         payload = {
             "model": MODEL,

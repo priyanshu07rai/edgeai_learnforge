@@ -1,4 +1,4 @@
-﻿"""
+"""
 summarizer.py — MapReduce Overall Summarizer Pipeline
 
 Pre-processes transcripts, splits them into overlapping chunks,
@@ -11,9 +11,8 @@ import re
 from typing import List
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
-from ollama_health import check_ollama_available
 from cleaner import clean_transcript_spacy
-from notes_generator import _call_gemini_raw, _call_ollama_raw
+from notes_generator import _call_ollama_raw
 
 # Constants
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -48,12 +47,9 @@ def chunk_text_overlapping(text: str, chunk_size: int = 600, overlap: int = 100)
     return chunks
 
 
-def summarize_chunk(chunk_text: str, ollama_url: str = OLLAMA_URL, gemini_key: str = None) -> str:
+def summarize_chunk(chunk_text: str, ollama_url: str = OLLAMA_URL) -> str:
     """Summarizes a single transcript chunk to key bullet points."""
-    prompt = f"""You are
-
-CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
- an expert technical writer.
+    prompt = f"""You are an expert technical writer.
 Analyze this segment of an educational video transcript.
 Generate 2-3 detailed, factual bullet points summarizing the technical concepts, steps, or code implementations discussed.
 Use objective, third-person voice. Do NOT include greetings, pleasantries, or filler.
@@ -63,10 +59,7 @@ Transcript Segment:
 
 Bullet Points:"""
 
-    if gemini_key:
-        return _call_gemini_raw(prompt, gemini_key, json_mode=False)
-    else:
-        return _call_ollama_raw(prompt, ollama_url, json_mode=False)
+    return _call_ollama_raw(prompt, ollama_url, json_mode=False)
 
 
 def _parse_json_safely(raw: str) -> dict:
@@ -111,14 +104,11 @@ def _parse_json_safely(raw: str) -> dict:
     }
 
 
-def reduce_summaries(bullet_points: List[str], ollama_url: str = OLLAMA_URL, gemini_key: str = None) -> dict:
+def reduce_summaries(bullet_points: List[str], ollama_url: str = OLLAMA_URL) -> dict:
     """Combines chunk summaries into a single cohesive overall structured JSON summary."""
     combined_bullets = "\n".join(bullet_points)
     
-    prompt = f"""# Role
-
-CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
- and Objective
+    prompt = f"""# Role and Objective
 You are the lead technical editor for a premium educational platform. Your task is to combine these section summaries into a single, cohesive, high-level summary of the entire video.
 
 # Instructions
@@ -142,11 +132,7 @@ Return ONLY a JSON object with this exact structure (no markdown wrapper, no oth
   ]
 }}"""
 
-    if gemini_key:
-        raw_json = _call_gemini_raw(prompt, gemini_key, json_mode=True)
-    else:
-        raw_json = _call_ollama_raw(prompt, ollama_url, json_mode=True)
-        
+    raw_json = _call_ollama_raw(prompt, ollama_url, json_mode=True)
     return _parse_json_safely(raw_json)
 
 
@@ -192,10 +178,9 @@ def generate_overall_summary(video_id: str, storage_dir: str, ollama_url: str = 
     # Step 2: Chunking Splitter
     chunks = chunk_text_overlapping(cleaned_text, chunk_size=600, overlap=100)
     
-    gemini_key = os.environ.get("GEMINI_API_KEY")
     ollama_online = check_ollama_available(ollama_url)
     
-    if not gemini_key and not ollama_online:
+    if not ollama_online:
         # Standard fallback if LLMs are offline
         bullets = [cleaned_text[:120] + "..."]
         result = {
@@ -206,17 +191,17 @@ def generate_overall_summary(video_id: str, storage_dir: str, ollama_url: str = 
         return result
         
     # Step 3: Parallel Llama 1B Threads
-    # Limit to 3 parallel requests to prevent overloading local uvicorn/ollama servers
-    max_workers = 3 if gemini_key else 2
+    # Limit to 2 parallel requests to prevent overloading local uvicorn/ollama servers
+    max_workers = 2
     
     print(f"[LearnForge MapReduce] Processing {len(chunks)} chunks in parallel...")
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        bullet_points = list(executor.map(lambda c: summarize_chunk(c, ollama_url, gemini_key), chunks))
+        bullet_points = list(executor.map(lambda c: summarize_chunk(c, ollama_url), chunks))
         
     print(f"[LearnForge MapReduce] Reducing {len(bullet_points)} chunk summaries...")
     
     # Step 4: Final Aggregator Layer (Reduce)
-    result = reduce_summaries(bullet_points, ollama_url, gemini_key)
+    result = reduce_summaries(bullet_points, ollama_url)
     
     # Cache result
     os.makedirs(video_dir, exist_ok=True)

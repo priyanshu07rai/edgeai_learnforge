@@ -525,17 +525,11 @@ def _run_pipeline_for_knowledge(topic_title, topic_id, topic_text, topic_index, 
     # Instead: attempt LLM extraction for ALL segments with sufficient content (≥200 chars).
     # The LLM prompts themselves handle conversational vs. technical distinctions internally.
     knowledge = None
-    gemini_key = os.environ.get("GEMINI_API_KEY")
     ollama_online = check_ollama_available(ollama_url)
 
-    if len(llm_input_text) >= 200:
-        if gemini_key:
-            print(f"[LearnForge Notes] Calling Gemini knowledge extraction for [{topic_index}]...")
-            knowledge = _call_llm_to_extract_knowledge(topic_title, llm_input_text, gemini_key=gemini_key)
-
-        if not knowledge and ollama_online:
-            print(f"[LearnForge Notes] Calling Ollama knowledge extraction for [{topic_index}]...")
-            knowledge = _call_llm_to_extract_knowledge(topic_title, llm_input_text, ollama_url=ollama_url)
+    if len(llm_input_text) >= 200 and ollama_online:
+        print(f"[LearnForge Notes] Calling Ollama knowledge extraction for [{topic_index}]...")
+        knowledge = _call_llm_to_extract_knowledge(topic_title, llm_input_text, ollama_url=ollama_url)
 
     # ── Step 5: Heuristic extraction fallback ─────────────────────────────────
     if not knowledge:
@@ -550,80 +544,12 @@ def _run_pipeline_for_knowledge(topic_title, topic_id, topic_text, topic_index, 
 
 
 
-def _call_llm_to_extract_knowledge(topic_title: str, cleaned_text: str, gemini_key: str = None, ollama_url: str = None) -> dict:
+def _call_llm_to_extract_knowledge(topic_title: str, cleaned_text: str, ollama_url: str = OLLAMA_URL) -> dict:
     """
-    Smart LLM extraction pipeline — adapts to model capability:
-    - Gemini (large model): 2-pass pipeline with full JSON schema
-    - Ollama 1B (small model): 4 small focused prompts, each asking ONE thing reliably
+    Ollama 1B LLM extraction pipeline: 4 small focused prompts, each asking ONE thing reliably.
     """
-    if gemini_key:
-        return _call_gemini_full_pipeline(topic_title, cleaned_text, gemini_key)
-    elif ollama_url:
+    if ollama_url:
         return _call_ollama_focused_pipeline(topic_title, cleaned_text, ollama_url)
-    return None
-
-
-def _call_gemini_full_pipeline(topic_title: str, cleaned_text: str, gemini_key: str) -> dict:
-    """
-    2-pass Gemini pipeline: Clean → Extract structured JSON.
-    Gemini can handle complex JSON reliably.
-    """
-    # Pass 1: Clean the transcript text
-    cleaning_prompt = f"""You are a transcript cleaning assistant. Clean this transcript for study notes.
-- Remove all filler words, greetings, subscribe/like requests, and conversational openers.
-- Remove: "hello everyone", "welcome back", "in this video", "let's start", "okay so", "alright", etc.
-- Convert first-person ("I will show you", "let's do") to declarative ("The following demonstrates").
-- Keep ONLY educational facts, concepts, definitions, examples, and procedures.
-- Write in clean, objective English only.
-
-Topic: {topic_title}
-Transcript:
-{cleaned_text[:3500]}
-
-Return ONLY the cleaned educational text."""
-
-    raw_cleaned = _call_gemini_raw(cleaning_prompt, gemini_key, json_mode=False)
-    if not raw_cleaned or len(raw_cleaned.strip()) < 20:
-        raw_cleaned = cleaned_text
-
-    # Pass 2: Extract structured knowledge JSON
-    extraction_prompt = f"""You are an educational knowledge extraction engine.
-Convert this educational text into structured study notes for the topic "{topic_title}".
-Write in clear, objective English. Do NOT copy transcript sentences verbatim — rewrite them as clean factual statements.
-
-Educational Text:
-{raw_cleaned[:3000]}
-
-Return ONLY a JSON object (no markdown, no extra text):
-{{
-  "concept": "{topic_title}",
-  "definition": "A formal 1-2 sentence textbook definition of what this concept IS.",
-  "explanation": "A cohesive 3-6 sentence paragraph explaining how it works and why it matters. Connect ideas logically. Do not use bullet points here.",
-  "analogy": "A real-world analogy if one was mentioned. Empty string if none.",
-  "examples": ["Specific concrete example 1", "Specific concrete example 2"],
-  "procedures": ["Step 1: specific action", "Step 2: specific action"],
-  "applications": ["Real-world use case 1", "Real-world use case 2"],
-  "commands": ["exact command 1 if any"],
-  "warnings": ["Common mistake or pitfall 1 if mentioned"],
-  "best_practices": ["Key takeaway or best practice 1"],
-  "interview_questions": ["Specific interview question about this concept?", "Another question?"],
-  "keywords": ["KeyTerm1", "KeyTerm2", "KeyTerm3"],
-  "code": ["code snippet if present"],
-  "summary": "2-3 sentences: what this topic teaches and why it matters."
-}}"""
-
-    raw_json = _call_gemini_raw(extraction_prompt, gemini_key, json_mode=True)
-    if not raw_json:
-        return None
-
-    for match in re.finditer(r'\{', raw_json):
-        try:
-            candidate = raw_json[match.start():]
-            result = json.loads(candidate[:candidate.rfind('}') + 1])
-            if result.get("definition") or result.get("explanation"):
-                return result
-        except Exception:
-            continue
     return None
 
 
@@ -777,175 +703,24 @@ def extract_deterministic_keywords(transcript_text: str, top_n=8) -> list:
     return [word for word, count in Counter(keywords).most_common(top_n)]
 
 
-def llama_metadata_router(text: str, gemini_key: str = None, ollama_url: str = None) -> dict:
-    """
-    Query the LLM to classify if the transcript segment is technical
-    and identify its primary language/framework and confidence score.
-    Returns: { "is_technical": bool, "primary_language_or_framework": str, "confidence_score": float }
-    """
-    prompt = f"""You are
-
-CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
- a semantic routing engine. Analyze this transcript segment and categorize its structural payload.
-    
-    Transcript:
-    {text[:3000]}
-    
-    Return ONLY a JSON object with this exact structure (no markdown wrapper, no other text):
-    {{
-      "is_technical": true,
-      "primary_language_or_framework": "Django",
-      "confidence_score": 0.95
-    }}
-    
-    Rules:
-    - Set is_technical to true if code, syntax, or core software engineering concepts are actively taught or discussed. Set it to false if it is just greetings, chatting, pacing orientation, general channel updates, or personal discussion.
-    - Set primary_language_or_framework to the main software tool/language (e.g. 'Django', 'React', 'Git', 'Docker'). If it is purely conversational or intro, write 'Pure Discussion'.
-    - Set confidence_score to a float between 0.0 and 1.0.
-    """
-    
-    # Try calling LLM (Gemini or Ollama)
-    raw_res = None
-    if gemini_key:
-        raw_res = _call_gemini_raw(prompt, gemini_key, json_mode=True)
-    elif ollama_url:
-        raw_res = _call_ollama_raw(prompt, ollama_url, json_mode=True)
-        
-    # Default fallback routing
-    fallback_res = {
-        "is_technical": True,  # Default to technical to prevent false N/As if offline
-        "primary_language_or_framework": "Unknown",
-        "confidence_score": 0.5
-    }
-    
-    if not raw_res:
-        return fallback_res
-        
-    # Parse JSON
-    for match in re.finditer(r'\{', raw_res):
-        try:
-            candidate = raw_res[match.start():]
-            data = json.loads(candidate[:candidate.rfind('}') + 1])
-            # Validate keys
-            if "is_technical" in data:
-                return {
-                    "is_technical": bool(data.get("is_technical")),
-                    "primary_language_or_framework": str(data.get("primary_language_or_framework", "Unknown")),
-                    "confidence_score": float(data.get("confidence_score", 0.5))
-                }
-        except Exception:
-            continue
-            
-    return fallback_res
-
-
-def is_banter_or_empty_chunk(text: str) -> bool:
-    """
-    Checks if a transcript chunk is short or contains conversational/vlogging banter
-    without technical programming or configurations.
-    """
-    if not text:
-        return True
-    
-    # Threshold 1: If fewer than 600 characters
-    if len(text) < 600:
-        return True
-        
-    text_lower = text.lower()
-    
-    # High-frequency interview/vlog filler keywords
-    vlog_words = ["welcome", "subscribe", "channel", "everyone", "hello", "video", "course", "tutorial", "like share", "comment below"]
-    # Code/technical formatting keywords
-    tech_keywords = [
-        "class", "def ", "function", "import", "from ", "const ", "let ", "var ", 
-        "return", "pip", "python", "npm", "git", "run", "command", "api", 
-        "serializers", "model", "url", "route", "database", "table", "postman", 
-        "django", "react", "html", "css", "docker", "deploy", "config", "install",
-        "generic", "viewset", "apiview", "token", "jwt"
-    ]
-    
-    has_vlog = any(vw in text_lower for vw in vlog_words)
-    has_tech = any(tk in text_lower for tk in tech_keywords)
-    
-    if has_vlog and not has_tech:
-        return True
-        
-    return False
-
-
-def _call_llm_banter_prompt(topic_title: str, cleaned_text: str, topic_index: int, gemini_key: str = None, ollama_url: str = None):
-    """
-    Simpler prompt layout designed specifically for empty or banter/introductory segments.
-    Strictly yields N/A for code/procedural blocks.
-    """
-    prompt = f"""# Role
-
-CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
- and Objective
-You are an adaptive educational parsing engine. Your job is to extract technical training notes from a raw transcript.
-
-# Strict Truthfulness Rules
-- **The Empty Content Rule:** If a specific section (like Code, Commands, or Implementation Steps) contains no actual developer actions or technical code execution in the transcript, you MUST write "N/A - This segment is an conversational discussion/introduction."
-- Do NOT make up steps, do NOT guess instructions based on the title, and do NOT turn a casual question into an implementation configuration rule.
-
-Transcript text:
-{cleaned_text[:3000]}
-
-Return ONLY a JSON object with this exact structure (no markdown wrapper, no other text):
-{{
-  "detailed": {{
-    "summary": "2-3 educational sentences explaining what this conversational/introductory segment discusses.",
-    "markdown": "### Course Discussion\\n- This segment covers conversational remarks, course pacing orientation, or a general introduction to the topic of {topic_title}.\\n- The instructor outlines the context and structure of upcoming concepts.\\n- No direct technical implementation steps or terminal commands are performed in this introductory block.\\n\\n### 🧠 Concept Check & Review\\nQuestion 1: What general overview or introductory context was introduced regarding {topic_title}?",
-    "sections": [
-      {{
-        "title": "Concept",
-        "icon": "📌",
-        "content": ["Outline of the introductory context or conversational details discussed in this video block."]
-      }}
-    ],
-    "important_terms": ["Overview"]
-  }},
-  "revision": {{
-    "definition": "Overview of {topic_title} introductory context.",
-    "facts": ["This segment outlines foundational context for {topic_title}", "No code implementation or procedures are executed in this section"],
-    "terms": ["Introduction"],
-    "remember": "No code is implemented in this block"
-  }}
-}}"""
-
-    if gemini_key:
-        raw_res = _call_gemini_raw(prompt, gemini_key, json_mode=True)
-    elif ollama_url:
-        raw_res = _call_ollama_raw(prompt, ollama_url, json_mode=True)
-    else:
-        return None
-
-    if not raw_res:
-        return None
-
-    return _parse_llm(raw_res, topic_title, topic_index)
-
-
-# ── Two-Pass LLM Pipeline ────────────────────────────────────────────────────
-
-def _call_gemini_raw(prompt: str, api_key: str, json_mode: bool = False) -> str:
-    models = ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]
-    headers = {"Content-Type": "application/json"}
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    if json_mode:
-        payload["generationConfig"] = {"responseMimeType": "application/json"}
-        
-    for model_name in models:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
-        try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=40)
-            if resp.status_code == 200:
-                return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-            else:
-                print(f"[Gemini API] [{model_name}] Status {resp.status_code} - trying next fallback model...")
-        except Exception as e:
-            print(f"[Gemini API] [{model_name}] Exception: {e}")
+def _call_ollama_raw(prompt: str, ollama_url: str, json_mode: bool = False) -> str:
+    try:
+        payload = {"model": MODEL, "prompt": prompt, "stream": False}
+        if json_mode:
+            payload["format"] = "json"
+        resp = requests.post(
+            ollama_url,
+            json=payload,
+            timeout=40,
+        )
+        if resp.status_code == 200:
+            return resp.json().get("response", "").strip()
+    except Exception as e:
+        print(f"[Ollama] Exception calling Ollama: {e}")
     return ""
+
+
+
 
 
 
@@ -966,172 +741,7 @@ def _call_ollama_raw(prompt: str, ollama_url: str, json_mode: bool = False) -> s
     return ""
 
 
-def _call_llm_three_pass(topic_title: str, cleaned_text: str, topic_index: int, gemini_key: str = None, ollama_url: str = None):
-    # Step 1: Cleaning Agent
-    cleaning_prompt = f"""You are a precise transcript cleaning assistant.
 
-CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
-
-Your job is to clean this lecture transcript section for educational study notes.
-
-REMOVE ONLY (promotional/noise content):
-- Channel promotions, greetings and sign-offs (e.g., "Hello everyone", "Welcome back", "Subscribe to the channel", "Hit the bell icon", "Thanks for watching")
-- Sponsor slots and self-promotional pitches
-- Pure vocal hesitation sounds: "um", "uh", "hmm", "er" (only when isolated)
-- Stutter repetitions (e.g., "the the the" → "the")
-- Off-topic personal conversation unrelated to the subject
-
-PRESERVE EVERYTHING ELSE:
-- ALL technical explanations, definitions, and concepts — keep them fully intact
-- ALL examples, analogies, and comparisons the instructor gives — do not shorten
-- ALL reasoning chains and "why" explanations — these are critical for learning
-- Transition phrases like "so", "now", "basically", "essentially", "right" — these signal teaching flow
-- Step-by-step walkthroughs and code explanations
-- Convert first-person speech ("I", "we", "let's") to objective third-person ONLY when it is a direct action instruction.
-  Example: "okay so now let's go to urls.py" → "Navigate to urls.py."
-  Do NOT convert explanatory sentences like "So what I'm saying is..." — preserve their meaning instead.
-
-Topic: {topic_title}
-Transcript chunk:
-{cleaned_text[:3500]}
-
-Return ONLY the cleaned educational text. Preserve the full depth and richness of the explanations. Do not summarize. Do not shorten explanations. Do not include markdown formatting or warnings."""
-
-    if gemini_key:
-        raw_cleaned = _call_gemini_raw(cleaning_prompt, gemini_key, json_mode=False)
-    elif ollama_url:
-        raw_cleaned = _call_ollama_raw(cleaning_prompt, ollama_url, json_mode=False)
-    else:
-        return None
-
-    if not raw_cleaned or len(raw_cleaned.strip()) < 20:
-        print("[LearnForge Notes] Cleaning Agent failed or returned empty text.")
-        raw_cleaned = cleaned_text
-
-    # Step 2: Knowledge Extraction Agent
-    extraction_prompt = f"""You are
-
-CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
- an educational knowledge extraction engine.
-Your task is to convert this free-form educational text into structured concepts and facts.
-Do NOT summarize yet. Just extract the facts and entities as they are described.
-Do NOT assume or invent any facts or patterns not explicitly present in the text.
-Strict Third-Person Objective Voice Only: Rewrite concepts and sentences in objective, third-person voice. Do NOT include first-person terms ("I", "we", "my", "our", "us") in any extracted concepts, definitions, examples, or mistakes.
-If no commands, examples, or mistakes are discussed in the text, return empty lists [] for those fields.
-
-Educational Text:
-{raw_cleaned}
-
-Return ONLY a JSON object with this exact structure (no markdown wrapper, no other text):
-{{
-  "topic": "{topic_title}",
-  "concepts": ["Concept 1 Name", "Concept 2 Name"],
-  "definitions": ["Definition 1", "Definition 2"],
-  "examples": ["Example 1", "Example 2"],
-  "commands": ["command/code snippet 1"],
-  "mistakes": ["common mistake 1", "common mistake 2"],
-  "future_topics": ["next topic/future concept 1"]
-}}"""
-
-    if gemini_key:
-        raw_pass1 = _call_gemini_raw(extraction_prompt, gemini_key, json_mode=True)
-    elif ollama_url:
-        raw_pass1 = _call_ollama_raw(extraction_prompt, ollama_url, json_mode=True)
-    else:
-        return None
-
-    if not raw_pass1:
-        return None
-
-    # Parse JSON from Pass 1
-    extracted_knowledge = None
-    for match in re.finditer(r'\{', raw_pass1):
-        try:
-            candidate = raw_pass1[match.start():]
-            extracted_knowledge = json.loads(candidate[:candidate.rfind('}') + 1])
-            break
-        except Exception:
-            continue
-
-    if not extracted_knowledge:
-        print(f"[LearnForge Notes] Failed to parse Knowledge Extraction JSON: {raw_pass1[:200]}")
-        return None
-
-    # Step 3: Teacher Agent
-    teacher_prompt = f"""# Role
-
-CRITICAL RULE: You MUST write your entire response exclusively in English. If the input contains Hindi, Hinglish, or Devanagari characters, TRANSLATE it to English. DO NOT output any Hindi or Devanagari characters.
- and Objective
-You are the AI engine behind a premium educational platform's study-guide feature. Your goal is to convert messy, raw lecture transcripts (represented here as structured knowledge units) into perfectly structured, textbook-quality "Detailed Notes".
-
-# Strict Truthfulness Rules
-- **The Empty Content Rule:** If a specific section (like Code, Commands, or Implementation Steps) contains no actual developer actions or technical code execution in the transcript, you MUST write "N/A - This segment is an conversational discussion/introduction."
-- Do NOT make up steps, do NOT guess instructions based on the title, and do NOT turn a casual question into an implementation configuration rule.
-
-# Style and Quality Rules (Strict Synthesis Penalties)
-- **Third-Person Objective Voice Only:** Never use "I", "me", "my", "you", "we", "us", "let's", or "the instructor". Rewrite all actions objectively (e.g., instead of "I'll open VS Code", write "Open the project folder in Visual Studio Code" or "The developer opens Visual Studio Code").
-- **Zero Transcript Leakage:** Never copy raw conversational stumbles, self-promotional pitches (like references to free courses or YouTube links), or broken sentences verbatim. 
-- **High-Density Technical Rephrasing:** Turn messy spoken walkthroughs into polished, professional prose. Synthesize explanations clearly.
-- **No Placeholders:** Never use placeholders or template strings. Generate actual questions based on the technical content.
-
-Structured Knowledge:
-{json.dumps(extracted_knowledge, indent=2)}
-
-Rules for Sections:
-- Dynamically select which sections to generate. Only include sections if they are supported by direct facts in the Structured Knowledge.
-- Choose section titles ONLY from this allowed list:
-   - "Definition"
-   - "Concept"
-   - "Steps"
-   - "Code"
-   - "Commands"
-   - "Example"
-   - "Installation"
-   - "Configuration"
-   - "Architecture"
-   - "Advantages"
-   - "Key Takeaways"
-   - "Common Mistakes" (ONLY if mistakes are explicitly present in the Structured Knowledge)
-   - "Interview Questions" (ONLY if explicitly supported by technical concepts or questions in the Structured Knowledge)
-- Do NOT use a fixed template. If the knowledge only discusses installation, only generate the "Installation" and "Commands" or "Configuration" sections.
-- For each section, provide a suitable emoji icon (e.g. 📌 for Definition, ⚙️ for Steps, 💻 for Code, ⚠️ for Common Mistakes, etc.).
-- The content for each section must be a list of clear, educational, non-conversational sentences.
-- The "revision" object must be strictly derived from the detailed notes sections, keeping it short, bulleted, and factual (maximum 150 words total, no examples or stories).
-
-Return ONLY a JSON object with this exact structure (no markdown wrapper, no other text):
-{{
-  "detailed": {{
-    "summary": "2-3 educational sentences explaining what this topic teaches",
-    "markdown": "A comprehensive, highly detailed textbook-quality study guide in Markdown format. Follow these STRICT rules:\n- **Third-Person Objective Voice Only:** Never use 'I', 'me', 'my', 'you', 'we', 'us', or 'the instructor'. Rewrite all actions objectively.\n- **Zero Transcript Leakage:** Never copy raw conversational stumbles, self-promotional pitches, or broken sentences verbatim.\n- **High-Density Technical Rephrasing:** Turn messy spoken walkthroughs into polished, professional prose.\n- **CRITICAL — Code Fence Rule:** ONLY add markdown fenced code blocks (e.g. ```python or ```bash) if the transcript contains ACTUAL executable source code with programming syntax (e.g. def, class, import, function declarations, for loops, shell commands). Do NOT wrap explanatory descriptions, conceptual explanations, or sentences that merely MENTION a language name (e.g. 'Python uses classes') inside code fences. If no real code exists, do NOT include any code block at all.\n- **Format Structure:**\n   1. Do NOT use rigid generic headers (like '📘 Segment Synthesis', 'Technical Procedures & Commands', 'Code & Terminal Commands'). Instead, use organic, concept-based headings (e.g. `### OOP Encapsulation` or `### Client-Server Request Cycle`).\n   2. All explanatory text, concepts, steps, and procedures MUST be structured as clean, detailed bullet points (`-` or `*`).\n   3. Do NOT use numbered lists. Use bullet points for all sequential operations or setup steps.\n   4. Do NOT prefix bullet points with rigid template bold headers like `**Core Focus:**` or `**Context & Purpose:**`. Simply present direct, clear sentences as bullet points.\n   5. The only standard section at the end is `### 🧠 Concept Check & Review` where you generate 2-3 high-quality academic review questions (e.g., Question 1: [question]).",
-    "sections": [
-      {{
-        "title": "Section Title",
-        "icon": "emoji",
-        "content": ["Sentence 1", "Sentence 2"]
-      }}
-    ],
-    "important_terms": ["Term1", "Term2", "Term3"]
-  }},
-  "revision": {{
-    "definition": "One-sentence exam-ready definition of the core concept (max 20 words)",
-    "facts": ["5 to 8 exam-relevant factual bullets (max 12 words each, no examples or stories)"],
-    "terms": ["3 to 5 keywords only"],
-    "remember": "One memorable key takeaway or critical distinction (max 15 words)"
-  }}
-}}"""
-
-    # Call LLM for Pass 3
-    if gemini_key:
-        raw_pass2 = _call_gemini_raw(teacher_prompt, gemini_key, json_mode=True)
-    elif ollama_url:
-        raw_pass2 = _call_ollama_raw(teacher_prompt, ollama_url, json_mode=True)
-    else:
-        return None
-
-    if not raw_pass2:
-        return None
-
-    return _parse_llm(raw_pass2, topic_title, topic_index)
 
 
 _GENERIC_PHRASES = [
