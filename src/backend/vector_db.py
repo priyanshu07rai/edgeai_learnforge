@@ -47,10 +47,47 @@ class ChunkResult:
 
 
 def get_embedding_model():
+    """
+    Returns the singleton SentenceTransformer embedding model.
+
+    VERIFY after deployment:
+    1. First request for any video will rebuild index (expected, one-time)
+    2. Check log output: "[VectorDB] Loaded embedding model: ... dim: 768"
+    3. Test a Hinglish query via /qa/ask: "yeh kya hota hai?" against a
+       Hindi-English mixed lecture — results should be more relevant
+    4. faiss.index file size will roughly double (384D -> 768D) —
+       from ~250-400KB to ~500-800KB per video. Still negligible.
+    """
     global _model
     if _model is None:
-        _model = SentenceTransformer("all-MiniLM-L6-v2")
+        EMBEDDING_MODEL = os.environ.get(
+            "EMBEDDING_MODEL", "google/embeddinggemma-300m"
+        )
+        _model = SentenceTransformer(EMBEDDING_MODEL)
+        print(f"[VectorDB] Loaded embedding model: {EMBEDDING_MODEL} "
+              f"(output dim: {_model.get_sentence_embedding_dimension()})")
     return _model
+
+
+def _check_index_dimension_valid(index_path: str, expected_dim: int) -> bool:
+    """
+    Returns True if the stored index matches expected_dim.
+    Returns False if mismatched or invalid (triggers auto-rebuild).
+    """
+    if not os.path.exists(index_path):
+        return False   # no index yet — will be built fresh
+    try:
+        idx = faiss.read_index(index_path)
+        stored_dim = idx.d
+        if stored_dim != expected_dim:
+            print(f"[VectorDB] Index dimension mismatch: "
+                  f"stored={stored_dim}, model={expected_dim}. "
+                  f"Rebuilding index for this video.")
+            return False
+        return True
+    except Exception as e:
+        print(f"[VectorDB] Index read failed ({e}), will rebuild.")
+        return False
 
 
 def _split_boundary_aware(text: str, size: int, overlap: int) -> list[str]:
@@ -226,6 +263,40 @@ def search_index(video_dir: str, query: str, top_k: int = 5,
     """
     faiss_path = os.path.join(video_dir, "faiss.index")
     chunks_path = os.path.join(video_dir, "chunks.json")
+
+    model = get_embedding_model()
+    expected_dim = model.get_sentence_embedding_dimension()
+
+    # Invalidate and rebuild index if missing or dimension mismatched (e.g. 384D -> 768D swap)
+    if not _check_index_dimension_valid(faiss_path, expected_dim) or not os.path.exists(chunks_path):
+        if os.path.exists(faiss_path):
+            try:
+                os.remove(faiss_path)
+            except Exception:
+                pass
+        if os.path.exists(chunks_path):
+            try:
+                os.remove(chunks_path)
+            except Exception:
+                pass
+
+        # Trigger rebuild from transcript and topics if available
+        transcript_path = os.path.join(video_dir, "transcript.json")
+        topics_path = os.path.join(video_dir, "topics.json")
+        if os.path.exists(transcript_path) and os.path.exists(topics_path):
+            try:
+                with open(transcript_path, "r", encoding="utf-8") as f:
+                    t_data = json.load(f)
+                with open(topics_path, "r", encoding="utf-8") as f:
+                    top_data = json.load(f)
+                segs = t_data.get("segments", [])
+                chunks_res = chunk_transcript(segs, top_data)
+                build_and_persist_index(chunks_res, video_dir)
+            except Exception as e:
+                print(f"[VectorDB] Auto-rebuild index failed: {e}")
+                return []
+        else:
+            return []
 
     if not os.path.exists(faiss_path) or not os.path.exists(chunks_path):
         return []

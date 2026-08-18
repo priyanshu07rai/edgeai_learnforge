@@ -1,7 +1,8 @@
 fastapi
 uvicorn[standard]
 pydantic
-sentence-transformers
+sentence-transformers>=2.7.0
+ollama
 faiss-cpu
 numpy
 requests

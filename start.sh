@@ -252,7 +252,20 @@ if [[ -n "$OLLAMA_BIN" ]]; then
     export OLLAMA_HOME="$OLLAMA_DATA_DIR"
     export OLLAMA_MODELS="$OLLAMA_DATA_DIR/models"
     export OLLAMA_KEEP_ALIVE="24h"
-    export OLLAMA_NUM_PARALLEL=1
+    export OLLAMA_FLASH_ATTENTION=1
+    export OLLAMA_KV_CACHE_TYPE=q8_0
+    export OLLAMA_NUM_PARALLEL=2
+
+    # ASR model configuration (large-v3-turbo decodes ~8x faster than large-v3)
+    export WHISPER_MODEL="large-v3-turbo"
+    # FALLBACK for 8GB boards if large-v3-turbo is too slow:
+    # export WHISPER_MODEL="distil-large-v3"
+
+    # Multilingual embedding model for RAG & FAISS
+    export EMBEDDING_MODEL="google/embeddinggemma-300m"
+    # Fallback to all-MiniLM-L6-v2 if embeddinggemma has install issues:
+    # export EMBEDDING_MODEL="all-MiniLM-L6-v2"
+
     mkdir -p "$OLLAMA_DATA_DIR"
 
     # Check if an Ollama server is already running

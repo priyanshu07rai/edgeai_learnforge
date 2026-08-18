@@ -64,9 +64,23 @@ _whisper_model = None
 # Real-time transcription progress tracker  { video_id: {segments, audio_pos, done} }
 _transcription_progress: dict = {}
 
+from collections import Counter as _Counter
+_healer_hit_counts: _Counter = _Counter()
+
 def heal_transcript_vocabulary(text: str) -> str:
+    """
+    Applies phonetic vocabulary corrections to raw Whisper transcripts.
+
+    Hit counters are tracked in _healer_hit_counts.
+    After a full transcription session, call _log_healer_hits() to print
+    which rules fired. Rules with zero hits over several sessions are
+    candidates for removal (the upgraded ASR model may have fixed them).
+    """
+    global _healer_hit_counts
     if not text:
         return text
+    # Keep this dict exactly as-is — do NOT change the rules here.
+    # Only add new rules at the bottom of the dict.
     corrections = {
         r'\bhardness\s+engineering\b': 'harness engineering',
         r'\bhardness\s+engineers\b': 'harness engineers',
@@ -98,8 +112,25 @@ def heal_transcript_vocabulary(text: str) -> str:
         r'\brunar\b': 'radar',
     }
     for pattern, replacement in corrections.items():
+        # Count hits before substitution so we know which rules are active
+        matches = re.findall(pattern, text, flags=re.IGNORECASE)
+        if matches:
+            _healer_hit_counts[pattern] += len(matches)
         text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
     return text
+
+
+def _log_healer_hits() -> None:
+    """
+    Print the phonetic healer rule fire counts to stdout.
+    Call this once after each full transcription completes.
+    Rules with 0 hits across many sessions → ASR model fixed them → safe to prune.
+    """
+    if _healer_hit_counts:
+        print(f"[Healer] Rule fire counts this session: "
+              f"{_healer_hit_counts.most_common(10)}")
+    else:
+        print("[Healer] No phonetic corrections fired this session.")
 
 class ProcessRequest(BaseModel):
     video_id: str
@@ -333,6 +364,32 @@ def _perform_whisper_transcription(audio_path: str, video_id: str):
     from faster_whisper import WhisperModel
     num_cores = os.cpu_count() or 6
 
+    # ── Whisper model selection ────────────────────────────────────────────────
+    # WHISPER_MODEL env-var lets operators override without a code change.
+    # Default: large-v3-turbo — ~8x faster decoder than full large-v3,
+    #          near-identical accuracy, retains multilingual/Hinglish support.
+    # FALLBACK for 8GB boards if large-v3-turbo is too slow:
+    #   export WHISPER_MODEL="distil-large-v3" in start.sh
+    #
+    # BENCHMARK REQUIRED before deploying to production:
+    #   Target RTF on Jetson Orin: <= 0.25x (same as current base.en baseline)
+    #   If RTF > 0.35x on 8GB board: switch WHISPER_MODEL to distil-large-v3
+    #   Monitor peak RAM with: sudo tegrastats | grep -i ram
+    #   Target peak RAM during ASR: <= 3.5 GB
+    _WHISPER_MODEL_NAME = os.environ.get("WHISPER_MODEL", "large-v3-turbo")
+    _MODEL_VRAM_ESTIMATES = {
+        "tiny.en": 0.15, "tiny": 0.15,
+        "base.en": 0.29, "base": 0.29,
+        "small.en": 0.48, "small": 0.48,
+        "medium": 1.5,
+        "large-v3": 3.1,
+        "large-v3-turbo": 1.6,
+        "distil-large-v3": 1.4,
+    }
+    _est_vram = _MODEL_VRAM_ESTIMATES.get(_WHISPER_MODEL_NAME, "unknown")
+    print(f"[ASR] Loading Whisper model: {_WHISPER_MODEL_NAME} "
+          f"(est. VRAM: {_est_vram} GB)")
+
     def _get_or_create_model(force_cpu=False):
         global _whisper_model
         if force_cpu or _whisper_model is None:
@@ -340,13 +397,27 @@ def _perform_whisper_transcription(audio_path: str, video_id: str):
                 try:
                     import torch
                     if torch.cuda.is_available():
-                        print("[LearnForge API] Attempting CUDA GPU acceleration...")
-                        _whisper_model = WhisperModel("tiny", device="cuda", compute_type="float16")
+                        print(f"[LearnForge API] Loading {_WHISPER_MODEL_NAME} on CUDA "
+                              f"(compute_type=int8_float16, cpu_threads=4)...")
+                        _whisper_model = WhisperModel(
+                            _WHISPER_MODEL_NAME,
+                            device="cuda",
+                            compute_type="int8_float16",
+                            cpu_threads=4,     # Arm Cortex-A78AE: 6-8 cores; reserve 4 for Whisper
+                            num_workers=1,     # single worker to protect unified RAM budget
+                        )
                         return _whisper_model
                 except Exception:
                     pass
-            print(f"[LearnForge API] Loading Whisper Model on CPU int8 ({num_cores} threads)...")
-            _whisper_model = WhisperModel("tiny", device="cpu", compute_type="int8", cpu_threads=num_cores)
+            # CPU fallback path (also uses env-var model name)
+            print(f"[LearnForge API] Loading {_WHISPER_MODEL_NAME} on CPU int8 ({num_cores} threads)...")
+            _whisper_model = WhisperModel(
+                _WHISPER_MODEL_NAME,
+                device="cpu",
+                compute_type="int8",
+                cpu_threads=num_cores,
+                num_workers=1,
+            )
         return _whisper_model
 
     def _execute_whisper(model_instance):
@@ -572,6 +643,7 @@ async def generate_transcript(
     for seg in segments:
         if "text" in seg:
             seg["text"] = heal_transcript_vocabulary(seg["text"])
+    _log_healer_hits()
 
     # Apply lightweight deterministic transcript refinement (grammar/capitalization/filler)
     transcript = refine_transcript(transcript)
