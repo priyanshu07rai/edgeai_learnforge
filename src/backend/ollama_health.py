@@ -37,9 +37,13 @@ def get_available_models() -> list[str]:
     if _available_models is not None:
         return _available_models
 
+    if not check_ollama_available():
+        _available_models = []
+        return _available_models
+
     _available_models = []
     try:
-        resp = requests.get(OLLAMA_TAGS_URL, timeout=3.0)
+        resp = requests.get(OLLAMA_TAGS_URL, timeout=1.0)
         if resp.status_code == 200:
             models_data = resp.json().get("models", [])
             _available_models = [m.get("name", "") for m in models_data]

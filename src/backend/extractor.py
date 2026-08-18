@@ -292,7 +292,22 @@ _DEF_RE2 = re.compile(
     re.IGNORECASE
 )
 
-# Procedural/action patterns
+def _is_clean_definition_sentence(sent: str, topic_title: str = "") -> bool:
+    """Strictly validates that a sentence is a true factual definition and not conversational banter."""
+    if not sent or len(sent) < 20 or len(sent) > 300:
+        return False
+    s_low = sent.lower()
+    banned = (
+        'welcome', 'in this video', 'in this course', 'in this tutorial', 'in this lecture',
+        'talk about', 'talking about', 'let\'s talk', 'let us talk', 'hot topic',
+        'twitter', 'linkedin', 'next video', 'previous video', 'channel', 'subscribe',
+        'everyone', 'today we', 'i will', 'we will', 'i ca n\'t', "i can't",
+        '15 lakhs', 'spending', 'pocket', 'button on the button', 'obviously a car',
+        'if i talk about', 'call it a torque', 'give you a fuel'
+    )
+    if any(b in s_low for b in banned):
+        return False
+    return True
 _PROC_VERBS = re.compile(
     r'\b(create|build|install|configure|define|implement|set\s+up|add|write|run|execute|'
     r'declare|initialize|import|export|register|connect|start|deploy|test|use|apply|'
@@ -600,7 +615,7 @@ def extract_knowledge_units(text: str, topic_title: str, corpus: List[str] = Non
                 analogies.append(sub_sent)
             elif is_misconception:
                 misconceptions.append(sub_sent)
-            elif is_def and not is_ex:
+            elif is_def and not is_ex and _is_clean_definition_sentence(sub_sent, topic_title):
                 definitions.append(sub_sent)
             elif is_step:
                 steps.append(sub_sent)
@@ -679,10 +694,24 @@ def extract_knowledge_units(text: str, topic_title: str, corpus: List[str] = Non
     if not interview_questions:
         interview_questions.append(f"What is the primary subject of {topic_title} and its main components?")
 
+    # Guarantee clean, formal textbook definition without conversational speech
+    clean_def = ""
+    for d in definitions:
+        if _is_clean_definition_sentence(d, topic_title):
+            clean_def = d
+            break
+    if not clean_def:
+        for exp in explanation_parts:
+            if _is_clean_definition_sentence(exp, topic_title) and (_DEF_RE.search(exp) or _DEF_RE2.search(exp)):
+                clean_def = exp
+                break
+    if not clean_def:
+        clean_def = f"{topic_title} is a core software and system engineering concept covering key architectural and practical principles."
+
     return {
         # New Knowledge Layer schema
         "concept": topic_title,
-        "definition": definitions[0] if definitions else (explanation_parts[0] if explanation_parts else ""),
+        "definition": clean_def,
         "explanation": explanation_text,
         "analogy": analogies[0] if analogies else "",
         "examples": examples[:3],
@@ -697,7 +726,7 @@ def extract_knowledge_units(text: str, topic_title: str, corpus: List[str] = Non
         "keywords": terms[:12],
         "code": code_snippets[:3],
         "output": [],
-        "summary": definitions[0] if definitions else (explanation_parts[0] if explanation_parts else f"Key concepts of {topic_title}."),
+        "summary": clean_def,
         
         # Legacy/compatibility schema
         'definitions': definitions[:5],

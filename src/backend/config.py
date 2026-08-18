@@ -13,13 +13,13 @@ OLLAMA_CHAT_URL = f"{OLLAMA_BASE_URL}/api/chat"
 OLLAMA_TAGS_URL = f"{OLLAMA_BASE_URL}/api/tags"
 
 # Model Tier Strategy (override via environment variables in start.sh)
-# Fast tier: topic titles, quality-gates (~400-700MB VRAM)
-MODEL_FAST = os.environ.get("MODEL_FAST", "LiquidAI/lfm2.5-350m")
+# Fast tier: topic titles, quality-gates
+MODEL_FAST = os.environ.get("MODEL_FAST", "llama3.2:1b")
 
-# Main tier: knowledge layer, flashcards, quiz, QA (~1.6-1.9GB VRAM)
-MODEL_MAIN = os.environ.get("MODEL_MAIN", "LFM2.5-2.6B:Q4_K_M")
+# Main tier: knowledge layer, flashcards, quiz, QA
+MODEL_MAIN = os.environ.get("MODEL_MAIN", "llama3.2:1b")
 
-# Legacy / Universal fallback model identifier
+# Universal fallback model identifier
 MODEL_FALLBACK = os.environ.get("MODEL_FALLBACK", "llama3.2:1b")
 
 # Runtime LLM Parameters (Jetson-tuned)

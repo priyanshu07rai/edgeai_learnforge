@@ -61,7 +61,7 @@ def get_embedding_model():
     global _model
     if _model is None:
         EMBEDDING_MODEL = os.environ.get(
-            "EMBEDDING_MODEL", "google/embeddinggemma-300m"
+            "EMBEDDING_MODEL", "all-MiniLM-L6-v2"
         )
         _model = SentenceTransformer(EMBEDDING_MODEL)
         print(f"[VectorDB] Loaded embedding model: {EMBEDDING_MODEL} "

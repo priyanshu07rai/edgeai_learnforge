@@ -53,27 +53,37 @@ def deduplicate_consecutive_phrases(text: str) -> str:
 
 def fallback_clean_regex(raw_text: str) -> str:
     """Fallback regex cleaner when spaCy is unavailable."""
-    # Strip timestamps first
     cleaned = strip_timestamps(raw_text)
     
-    # Basic vocal pauses and repetitive filler patterns
+    # Aggressive conversational banters and introductory noise
     fillers = [
+        r'(?:hey|hi|hello)\s+(?:everyone|guys|folks|all|team)\b',
+        r'welcome\s+back(?:\s+welcome\s+back)?(?:\s+to\s+another\s+exciting\s+video)?',
+        r'welcome\s+to\s+this\s+(?:video|course|tutorial|lecture|lesson)',
+        r'and\s+in\s+this\s+video\s+let\'?s\s+talk\s+about',
+        r'in\s+this\s+video\s+let\'?s\s+talk\s+about',
+        r'let\'?s\s+talk\s+about',
+        r'today\s+we\s+are\s+going\s+to\s+(?:talk\s+about|discuss|cover|learn)',
+        r'this\s+[\w\s]{2,20}\s+is\s+really\s+a\s+hot\s+topic\s+right\s+now',
+        r'you\s+can\s+see\s+the\s+topic\s+in\s+the\s+next\s+video',
+        r'maybe\s+on\s+twitter\s+maybe\s+on\s+linkedin',
         r'\b(okay|basically|actually|right|uh|ah|um|like|you know|literally|simply|really)\b',
-        r'\b(hello\s+everyone|welcome\s+back|welcome\s+to\s+this\s+video)\b',
-        r'\b(thank\s+you\s+for\s+watching|subscribe\s+to\s+the\s+channel)\b'
+        r'\b(thank\s+you\s+for\s+watching|subscribe\s+to\s+the\s+channel|drop\s+a\s+comment|comment\s+below)\b'
     ]
     for pattern in fillers:
         cleaned = re.sub(pattern, '', cleaned, flags=re.I)
         
-    # Standardize spaces and punctuation
+    cleaned = re.sub(r'[,.]\s*[,.]+', '.', cleaned)
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     
-    # Capitalize sentences and ensure ending periods
     sentences = re.split(r'(?<=[.!?])\s+', cleaned)
     rebuilt = []
+    _DISCARD_STARTERS = ("everyone to", "to another exciting", "let's talk", "let us talk", "hot topic", "next video", "on twitter", "on linkedin")
     for sent in sentences:
         sent = sent.strip()
-        if not sent:
+        if not sent or len(sent) < 15:
+            continue
+        if any(sent.lower().startswith(b) for b in _DISCARD_STARTERS):
             continue
         if sent[0].islower():
             sent = sent[0].upper() + sent[1:]
@@ -92,17 +102,26 @@ def clean_transcript_spacy(raw_text: str) -> str:
     # 1. Strip timestamp brackets
     text_no_ts = strip_timestamps(raw_text)
     
-    # 2. Pre-clean multi-word conversational fillers with regex
+    # 2. Pre-clean multi-word conversational fillers and introductory video banter
     multi_word_fillers = [
-        r'\b(you\s+know|welcome\s+back|hello\s+everyone|thank\s+you\s+for\s+watching|subscribe\s+to\s+the\s+channel)\b',
-        r'\b(welcome\s+to\s+this\s+video|welcome\s+to\s+this\s+course|welcome\s+to\s+this\s+tutorial)\b',
+        r'(?:hey|hi|hello)\s+(?:everyone|guys|folks|all|team)\b',
+        r'welcome\s+back(?:\s+welcome\s+back)?(?:\s+to\s+another\s+exciting\s+video)?',
+        r'welcome\s+to\s+this\s+(?:video|course|tutorial|lecture|lesson)',
+        r'and\s+in\s+this\s+video\s+let\'?s\s+talk\s+about',
+        r'in\s+this\s+video\s+let\'?s\s+talk\s+about',
+        r'let\'?s\s+talk\s+about',
+        r'today\s+we\s+are\s+going\s+to\s+(?:talk\s+about|discuss|cover|learn)',
+        r'this\s+[\w\s]{2,20}\s+is\s+really\s+a\s+hot\s+topic\s+right\s+now',
+        r'you\s+can\s+see\s+the\s+topic\s+in\s+the\s+next\s+video',
+        r'maybe\s+on\s+twitter\s+maybe\s+on\s+linkedin',
+        r'\b(you\s+know|thank\s+you\s+for\s+watching|subscribe\s+to\s+the\s+channel)\b',
         r'\b(let\'?s\s+get\s+started|see\s+you\s+in\s+the\s+next|drop\s+a\s+comment|comment\s+below)\b'
     ]
     for pattern in multi_word_fillers:
         text_no_ts = re.sub(pattern, '', text_no_ts, flags=re.I)
         
     # Clean multiple commas/dots resulting from regex replacements
-    text_no_ts = re.sub(r'[,.]\s*[,.]+', ',', text_no_ts)
+    text_no_ts = re.sub(r'[,.]\s*[,.]+', '.', text_no_ts)
     text_no_ts = re.sub(r'\s+', ' ', text_no_ts).strip()
     
     # 3. Process text with spaCy
@@ -114,24 +133,20 @@ def clean_transcript_spacy(raw_text: str) -> str:
         "like", "mean", "literally", "simply", "really", "so", "now"
     }
     
-    # Personal pronouns to filter out when they are part of conversational transitions
     conversation_pronouns = {"i", "me", "my", "we", "us", "our", "you", "your"}
+    _DISCARD_STARTERS = ("everyone to", "to another exciting", "let's talk", "let us talk", "hot topic", "next video", "on twitter", "on linkedin", "take care")
     
     rebuilt_sentences = []
     for sent in doc.sents:
         sent_tokens = []
         for token in sent:
-            # Skip duplicate punctuation
             if token.is_punct and token.text in (",", ";", ":", "-"):
                 if sent_tokens and sent_tokens[-1] in (",", ";", ":", "-"):
                     continue
                     
-            # Skip vocal pauses and interjections
             if token.text.lower() in fillers or token.pos_ == "INTJ":
                 continue
                 
-            # Filter pronouns only when part of conversational transition verbs
-            # e.g., "I will explain", "we are going to learn", "I want to show you"
             if token.text.lower() in conversation_pronouns and token.dep_ in ("nsubj", "poss"):
                 head_verb = token.head.text.lower()
                 if head_verb in {"talk", "explain", "show", "tell", "discuss", "cover", "learn", "see", "understand"}:
@@ -140,23 +155,20 @@ def clean_transcript_spacy(raw_text: str) -> str:
             sent_tokens.append(token.text)
             
         sent_str = " ".join(sent_tokens).strip()
-        # Clean spacing around punctuation
         sent_str = re.sub(r'\s+([.,!?])', r'\1', sent_str)
-        # Clean trailing commas before ending punctuation
         sent_str = re.sub(r',\s*([.!?])', r'\1', sent_str)
-        # Clean duplicate commas/spaces
         sent_str = re.sub(r',\s*,', ',', sent_str)
         sent_str = re.sub(r'\s+,', ',', sent_str)
         sent_str = re.sub(r'^[,.\s]+', '', sent_str).strip()
         
-        # Deduplicate consecutive identical words (e.g. "is is" -> "is")
+        # Deduplicate consecutive identical words
         sent_str = re.sub(r'\b(\w+)\s+\1\b', r'\1', sent_str, flags=re.I)
         
-        if sent_str:
-            # Capitalize first letter
+        if sent_str and len(sent_str) >= 15:
+            if any(sent_str.lower().startswith(b) for b in _DISCARD_STARTERS):
+                continue
             if sent_str[0].islower():
                 sent_str = sent_str[0].upper() + sent_str[1:]
-            # Ensure it ends with period
             if sent_str[-1] not in '.!?':
                 sent_str += '.'
             rebuilt_sentences.append(sent_str)

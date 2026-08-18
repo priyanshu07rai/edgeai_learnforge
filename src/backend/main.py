@@ -365,18 +365,10 @@ def _perform_whisper_transcription(audio_path: str, video_id: str):
     num_cores = os.cpu_count() or 6
 
     # ── Whisper model selection ────────────────────────────────────────────────
-    # WHISPER_MODEL env-var lets operators override without a code change.
-    # Default: large-v3-turbo — ~8x faster decoder than full large-v3,
-    #          near-identical accuracy, retains multilingual/Hinglish support.
-    # FALLBACK for 8GB boards if large-v3-turbo is too slow:
-    #   export WHISPER_MODEL="distil-large-v3" in start.sh
-    #
-    # BENCHMARK REQUIRED before deploying to production:
-    #   Target RTF on Jetson Orin: <= 0.25x (same as current base.en baseline)
-    #   If RTF > 0.35x on 8GB board: switch WHISPER_MODEL to distil-large-v3
-    #   Monitor peak RAM with: sudo tegrastats | grep -i ram
-    #   Target peak RAM during ASR: <= 3.5 GB
-    _WHISPER_MODEL_NAME = os.environ.get("WHISPER_MODEL", "large-v3-turbo")
+    # Default: "base.en" for ultra-fast near-instant CPU/edge execution (~15-30s).
+    # For high-spec GPU (e.g. Jetson Orin with CUDA), override via:
+    #   export WHISPER_MODEL="large-v3-turbo" or "distil-large-v3" in start.sh
+    _WHISPER_MODEL_NAME = os.environ.get("WHISPER_MODEL", "base.en")
     _MODEL_VRAM_ESTIMATES = {
         "tiny.en": 0.15, "tiny": 0.15,
         "base.en": 0.29, "base": 0.29,

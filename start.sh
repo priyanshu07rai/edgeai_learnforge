@@ -257,20 +257,20 @@ if [[ -n "$OLLAMA_BIN" ]]; then
     export OLLAMA_NUM_PARALLEL=2
     export OLLAMA_NUM_CTX=4096
 
-    # Tiered LLM configuration
-    export MODEL_FAST="${MODEL_FAST:-LiquidAI/lfm2.5-350m}"
-    export MODEL_MAIN="${MODEL_MAIN:-LFM2.5-2.6B:Q4_K_M}"
+    # LLM configuration (default to installed llama3.2:1b for instant offline response)
+    export MODEL_FAST="${MODEL_FAST:-llama3.2:1b}"
+    export MODEL_MAIN="${MODEL_MAIN:-llama3.2:1b}"
     export MODEL_FALLBACK="llama3.2:1b"
 
-    # ASR model configuration (large-v3-turbo decodes ~8x faster than large-v3)
-    export WHISPER_MODEL="large-v3-turbo"
-    # FALLBACK for 8GB boards if large-v3-turbo is too slow:
-    # export WHISPER_MODEL="distil-large-v3"
+    # ASR model configuration (base.en takes ~15-30s on CPU/Jetson)
+    export WHISPER_MODEL="${WHISPER_MODEL:-base.en}"
+    # For high-spec GPU, uncomment:
+    # export WHISPER_MODEL="large-v3-turbo"
 
-    # Multilingual embedding model for RAG & FAISS
-    export EMBEDDING_MODEL="google/embeddinggemma-300m"
-    # Fallback to all-MiniLM-L6-v2 if embeddinggemma has install issues:
-    # export EMBEDDING_MODEL="all-MiniLM-L6-v2"
+    # Embedding model for RAG & FAISS (all-MiniLM-L6-v2 is ultra fast ~1s)
+    export EMBEDDING_MODEL="${EMBEDDING_MODEL:-all-MiniLM-L6-v2}"
+    # For multilingual 768D, uncomment:
+    # export EMBEDDING_MODEL="google/embeddinggemma-300m"
 
     mkdir -p "$OLLAMA_DATA_DIR"
 

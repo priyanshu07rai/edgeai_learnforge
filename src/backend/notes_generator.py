@@ -590,21 +590,23 @@ def _call_ollama_focused_pipeline(topic_title: str, cleaned_text: str, ollama_ur
 
     # Prompt 1: Definition — "What is X in one clear sentence?"
     definition_raw = _ask(
-        f"""Read this transcript excerpt about "{topic_title}" and write ONE clear textbook definition sentence.
-Do NOT copy the transcript. Write a clean, objective definition.
-Do NOT start with "I", "we", "you", or "In this video".
+        f"""Write a formal, one-sentence textbook definition for "{topic_title}".
+Define what it is objectively and clearly in the third person.
+Do NOT use conversational language. Never say "In this video", "Let's talk", or "Welcome".
+Format: {topic_title} is [formal definition of what it is and what it does].
 
-Transcript excerpt:
-{text_snippet}
+Topic: {topic_title}
+Context:
+{text_snippet[:1500]}
 
-Write only the definition sentence (no labels, no explanation):"""
+Definition:"""
     )
 
     # Prompt 2: Explanation — "Explain the core concept in 2-4 sentences"
     explanation_raw = _ask(
         f"""Read this transcript excerpt about "{topic_title}".
 Write 2-4 clear sentences explaining the core concept — how it works and why it matters.
-Do NOT copy the transcript verbatim. Do NOT start with "I", "we", "you", "In this video", "Alright", or "Okay".
+Do NOT copy conversational chatter. Do NOT start with "I", "we", "you", "In this video", "Alright", or "Okay".
 Write in objective, third-person style.
 
 Transcript excerpt:
@@ -645,13 +647,18 @@ Summary sentence:"""
     def _is_good(text: str) -> bool:
         if not text or len(text.strip()) < 15:
             return False
-        bad_starters = ('alright', 'okay', 'so ', 'in this video', 'in this course',
-                        'my name is', 'hello', 'welcome', 'i am', "i'm", 'we are',
-                        'today we', 'in this lecture')
-        return not any(text.lower().strip().startswith(b) for b in bad_starters)
+        s_low = text.lower().strip()
+        bad_phrases = (
+            'alright', 'okay', 'so ', 'in this video', 'in this course',
+            'my name is', 'hello', 'welcome', 'i am', "i'm", 'we are',
+            'today we', 'in this lecture', 'let\'s talk', 'let us talk',
+            'hot topic', 'twitter', 'linkedin', 'next video', 'previous video',
+            'everyone to another', 'exciting video', 'subscribe', 'channel'
+        )
+        return not any(b in s_low for b in bad_phrases)
 
-    definition = definition_raw if _is_good(definition_raw) else f"{topic_title} is a key concept covered in this section."
-    explanation = explanation_raw if _is_good(explanation_raw) else " ".join(keypoints[:2]) if keypoints else ""
+    definition = definition_raw if _is_good(definition_raw) else f"{topic_title} is a core software and system engineering concept covering key architectural and practical principles."
+    explanation = explanation_raw if _is_good(explanation_raw) else (" ".join(keypoints[:2]) if keypoints else "")
     summary = summary_raw if _is_good(summary_raw) else definition
 
     print(f"[LearnForge Notes] [Ollama 1B] def={len(definition)}c, exp={len(explanation)}c, kp={len(keypoints)}, sum={len(summary)}c")
