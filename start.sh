@@ -255,6 +255,12 @@ if [[ -n "$OLLAMA_BIN" ]]; then
     export OLLAMA_FLASH_ATTENTION=1
     export OLLAMA_KV_CACHE_TYPE=q8_0
     export OLLAMA_NUM_PARALLEL=2
+    export OLLAMA_NUM_CTX=4096
+
+    # Tiered LLM configuration
+    export MODEL_FAST="${MODEL_FAST:-LiquidAI/lfm2.5-350m}"
+    export MODEL_MAIN="${MODEL_MAIN:-LFM2.5-2.6B:Q4_K_M}"
+    export MODEL_FALLBACK="llama3.2:1b"
 
     # ASR model configuration (large-v3-turbo decodes ~8x faster than large-v3)
     export WHISPER_MODEL="large-v3-turbo"

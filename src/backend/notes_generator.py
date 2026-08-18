@@ -47,13 +47,10 @@ from extractor import (
     build_notes_from_knowledge,
 )
 
-# Load .env variables
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
-load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+from config import OLLAMA_URL, MODEL_MAIN, DEFAULT_NUM_CTX, DEFAULT_NUM_PREDICT
+from ollama_health import check_ollama_available, resolve_model
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "llama3.2:1b"
+MODEL = MODEL_MAIN
 
 
 def _safe(text, limit=300):
@@ -564,14 +561,19 @@ def _call_ollama_focused_pipeline(topic_title: str, cleaned_text: str, ollama_ur
 
     def _ask(prompt: str, is_list: bool = False):
         """Ask Ollama one focused question, return text answer."""
+        target_model = resolve_model(MODEL_MAIN)
         try:
             resp = requests.post(
                 ollama_url,
                 json={
-                    "model": "llama3.2:1b",
+                    "model": target_model,
                     "prompt": prompt,
                     "stream": False,
-                    "options": {"temperature": 0.1, "num_predict": 300}
+                    "options": {
+                        "temperature": 0.1,
+                        "num_predict": DEFAULT_NUM_PREDICT,
+                        "num_ctx": DEFAULT_NUM_CTX,
+                    }
                 },
                 timeout=8.0
             )

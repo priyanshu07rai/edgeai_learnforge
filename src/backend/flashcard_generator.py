@@ -23,10 +23,11 @@ from notes_generator import generate_notes_for_single_topic
 # Load .env variables
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(os.path.dirname(BASE_DIR))
-load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+from schemas import FlashcardSet
+from config import OLLAMA_URL, MODEL_MAIN, DEFAULT_NUM_CTX
+from ollama_health import check_ollama_available, resolve_model
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "llama3.2:1b"
+MODEL = MODEL_MAIN
 
 
 def _safe(text, limit=300):
@@ -221,11 +222,21 @@ Return ONLY valid JSON (no markdown wrapper, no other text):
 ]}}"""
 
     raw = ""
+    target_model = resolve_model(MODEL_MAIN)
     if ollama_url:
         try:
             resp = requests.post(
                 ollama_url,
-                json={"model": MODEL, "prompt": prompt, "stream": False, "format": "json"},
+                json={
+                    "model": target_model,
+                    "prompt": prompt,
+                    "stream": False,
+                    "format": FlashcardSet.model_json_schema(),
+                    "options": {
+                        "temperature": 0.1,
+                        "num_ctx": DEFAULT_NUM_CTX,
+                    }
+                },
                 timeout=40,
             )
             if resp.status_code == 200:
@@ -234,6 +245,13 @@ Return ONLY valid JSON (no markdown wrapper, no other text):
             print(f"[Ollama] Flashcards failed: {e}")
 
     if raw:
+        # Try strict Pydantic parsing first
+        try:
+            validated = FlashcardSet.model_validate_json(raw)
+            if validated.cards:
+                return {"cards": [c.model_dump() for c in validated.cards]}
+        except Exception:
+            pass
         return _parse_cards_json(raw)
     return None
 

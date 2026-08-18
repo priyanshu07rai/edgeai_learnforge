@@ -20,9 +20,10 @@ import faiss
 import requests
 from vector_db import get_embedding_model, search_index
 from translator import detect_language, translate_to_english
+from config import OLLAMA_URL, MODEL_MAIN, DEFAULT_NUM_CTX
+from ollama_health import check_ollama_available, resolve_model
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL = "llama3.2:1b"
+MODEL = MODEL_MAIN
 
 
 def _safe(text, limit=200):
@@ -193,14 +194,16 @@ You are in HYBRID mode (merged context + general knowledge).
 
 def _llm_answer(question: str, context: str, mode: str, intent: str, temperature: float = 0.3) -> str:
     prompt = _build_prompt(question, context, mode, intent)
+    target_model = resolve_model(MODEL_MAIN)
 
     try:
         payload = {
-            "model": MODEL,
+            "model": target_model,
             "prompt": prompt,
             "stream": False,
             "options": {
-                "temperature": temperature
+                "temperature": temperature,
+                "num_ctx": DEFAULT_NUM_CTX,
             }
         }
         resp = requests.post(

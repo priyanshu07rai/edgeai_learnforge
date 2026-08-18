@@ -1,7 +1,8 @@
 import json
 import requests
 import re
-from ollama_health import check_ollama_available
+from config import MODEL_FAST, DEFAULT_NUM_CTX
+from ollama_health import check_ollama_available, resolve_model
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -115,15 +116,17 @@ Instructions:
 3. Output your response in this exact format:
 TITLE: [English Topic Title]
 """
+    target_model = resolve_model(MODEL_FAST)
     try:
         response = requests.post(
             ollama_url,
             json={
-                "model": "llama3.2:1b",
+                "model": target_model,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0.1
+                    "temperature": 0.1,
+                    "num_ctx": DEFAULT_NUM_CTX,
                 }
             },
             timeout=5.0
