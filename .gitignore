@@ -28,7 +28,7 @@ dist-ssr
 .env
 storage/
 uploads/
-cookies.txt/
+cookies.txt
 __pycache__/
 *.pyc
 
