@@ -14,18 +14,37 @@ CHUNK_SIZE = 2000                  # Smaller = more reliable (original was 4500)
 MAX_RETRIES = 2                    # Retries per chunk
 
 
+_HINGLISH_STOPWORDS = {
+    "hai", "hain", "kya", "karein", "karna", "karta", "karte", "hoti", "hota", "hote",
+    "mein", "hum", "aap", "tum", "aur", "bhi", "toh", "nahi", "nahin", "kyunki",
+    "lekin", "agar", "sabse", "yahan", "wahan", "accha", "achha", "theek", "kaise",
+    "bolte", "samjho", "dekho", "chahiye", "karenge", "baat", "pehle", "baad",
+    "wala", "wali", "wale", "kuch", "bahut", "sirf", "hota", "karo", "raha", "rahe", "rahi"
+}
+
+
 def detect_language(text: str) -> str:
-    """Returns 'en', 'hi', or 'mix'."""
+    """Returns 'en', 'hi', or 'mix' (including Romanized Hinglish)."""
     if not text or not text.strip():
         return 'en'
+    
+    # 1. Check Devanagari script ratio
     total = max(len(text), 1)
     ascii_chars = sum(1 for c in text if ord(c) < 128)
     ratio = ascii_chars / total
-    if ratio > 0.82:
-        return 'en'
     if ratio < 0.38:
         return 'hi'
-    return 'mix'
+    if ratio < 0.82:
+        return 'mix'
+
+    # 2. Check Romanized Hinglish words in ASCII text
+    words = [w.lower() for w in text.split() if len(w) >= 2]
+    if words:
+        hinglish_hits = sum(1 for w in words if w in _HINGLISH_STOPWORDS)
+        if hinglish_hits >= 2 and (hinglish_hits / len(words)) >= 0.03:
+            return 'mix'
+
+    return 'en'
 
 
 def translate_to_english(text: str, cache_path: str = None, label: str = "") -> str:

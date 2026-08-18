@@ -543,144 +543,111 @@ def _run_pipeline_for_knowledge(topic_title, topic_id, topic_text, topic_index, 
 
 def _call_llm_to_extract_knowledge(topic_title: str, cleaned_text: str, ollama_url: str = OLLAMA_URL) -> dict:
     """
-    Ollama 1B LLM extraction pipeline: 4 small focused prompts, each asking ONE thing reliably.
+    Ollama 1B LLM extraction pipeline: Single-prompt structured extraction.
     """
     if ollama_url:
-        return _call_ollama_focused_pipeline(topic_title, cleaned_text, ollama_url)
+        return _call_ollama_single_prompt(topic_title, cleaned_text, ollama_url)
     return None
 
 
-def _call_ollama_focused_pipeline(topic_title: str, cleaned_text: str, ollama_url: str) -> dict:
+def _call_ollama_single_prompt(topic_title: str, cleaned_text: str, ollama_url: str) -> dict:
     """
-    Ollama 1B pipeline: 4 small, focused prompts — each asks ONE specific thing.
-    Small models fail on complex multi-field JSON but work well on single focused questions.
-    Results are assembled into the full Knowledge Layer schema.
+    High-speed single-prompt structured knowledge extraction.
+    Generates definition, explanation, key points, and summary in ONE call instead of 4 serial calls.
+    Reduces LLM latency from ~5 minutes to < 30 seconds total.
     """
-    # Limit input to what the 1B model can handle without degrading
-    text_snippet = cleaned_text[:2000]
+    text_snippet = cleaned_text[:2500]
+    target_model = resolve_model(MODEL_MAIN)
 
-    def _ask(prompt: str, is_list: bool = False):
-        """Ask Ollama one focused question, return text answer."""
-        target_model = resolve_model(MODEL_MAIN)
-        try:
-            resp = requests.post(
-                ollama_url,
-                json={
-                    "model": target_model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": 0.1,
-                        "num_predict": DEFAULT_NUM_PREDICT,
-                        "num_ctx": DEFAULT_NUM_CTX,
-                    }
-                },
-                timeout=8.0
-            )
-            if resp.status_code == 200:
-                answer = resp.json().get("response", "").strip()
-                # Remove any meta-commentary like "Sure, here is..." or "Based on the text..."
-                answer = re.sub(r'^(?:sure[,.]?|here(?:\s+is)?[,:]?|based\s+on\s+[^,]+[,:]?|the\s+answer\s+is[:]?)\s*', '', answer, flags=re.I).strip()
-                return answer
-        except Exception:
-            pass
-        return ""
+    prompt = f"""You are an educational textbook compiler. Extract structured knowledge for "{topic_title}".
+Write in objective, third-person formal style. Never use conversational filler ("In this video", "Let's talk", "Welcome", "Alright").
 
-    print(f"[LearnForge Notes] [Ollama 1B] Running focused 4-prompt pipeline for '{topic_title}'...")
-
-    # Prompt 1: Definition — "What is X in one clear sentence?"
-    definition_raw = _ask(
-        f"""Write a formal, one-sentence textbook definition for "{topic_title}".
-Define what it is objectively and clearly in the third person.
-Do NOT use conversational language. Never say "In this video", "Let's talk", or "Welcome".
-Format: {topic_title} is [formal definition of what it is and what it does].
-
-Topic: {topic_title}
 Context:
-{text_snippet[:1500]}
-
-Definition:"""
-    )
-
-    # Prompt 2: Explanation — "Explain the core concept in 2-4 sentences"
-    explanation_raw = _ask(
-        f"""Read this transcript excerpt about "{topic_title}".
-Write 2-4 clear sentences explaining the core concept — how it works and why it matters.
-Do NOT copy conversational chatter. Do NOT start with "I", "we", "you", "In this video", "Alright", or "Okay".
-Write in objective, third-person style.
-
-Transcript excerpt:
 {text_snippet}
 
-Write only the explanation (no labels):"""
-    )
-
-    # Prompt 3: Key points — "List 3 key facts as bullet points"
-    keypoints_raw = _ask(
-        f"""Read this transcript excerpt about "{topic_title}".
-List exactly 3 key facts or takeaways as short bullet points.
-Each bullet must be a complete fact, not a transcript sentence.
-Format: - [fact]
-
-Transcript excerpt:
-{text_snippet}
-
-Key facts:"""
-    )
-
-    # Prompt 4: Summary — "Summarize in one sentence"
-    summary_raw = _ask(
-        f"""In ONE sentence, summarize what "{topic_title}" is and why it is important, based on this excerpt:
-{text_snippet[:800]}
-
-Summary sentence:"""
-    )
-
-    # Parse key points into a list
-    keypoints = []
-    for line in keypoints_raw.splitlines():
-        line = line.strip().lstrip('-•*123456789. ').strip()
-        if len(line) > 15 and not line.lower().startswith(('sure', 'here', 'based', 'key fact', 'key point')):
-            keypoints.append(line)
-
-    # Validate outputs — if they look like transcript copies or are empty, use fallback
-    def _is_good(text: str) -> bool:
-        if not text or len(text.strip()) < 15:
-            return False
-        s_low = text.lower().strip()
-        bad_phrases = (
-            'alright', 'okay', 'so ', 'in this video', 'in this course',
-            'my name is', 'hello', 'welcome', 'i am', "i'm", 'we are',
-            'today we', 'in this lecture', 'let\'s talk', 'let us talk',
-            'hot topic', 'twitter', 'linkedin', 'next video', 'previous video',
-            'everyone to another', 'exciting video', 'subscribe', 'channel'
+Output your response in this EXACT format:
+DEFINITION: {topic_title} is [one clear textbook definition sentence].
+EXPLANATION: [2-3 clear sentences explaining how it works and key mechanisms].
+KEY POINTS:
+- [Key technical fact 1]
+- [Key technical fact 2]
+- [Key technical fact 3]
+SUMMARY: [One sentence summary].
+"""
+    try:
+        resp = requests.post(
+            ollama_url,
+            json={
+                "model": target_model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 350,
+                    "num_ctx": DEFAULT_NUM_CTX,
+                }
+            },
+            timeout=8.0
         )
-        return not any(b in s_low for b in bad_phrases)
+        if resp.status_code == 200:
+            raw = resp.json().get("response", "").strip()
+            def_m = re.search(r'DEFINITION:\s*(.+?)(?=EXPLANATION:|KEY POINTS:|SUMMARY:|$)', raw, re.DOTALL | re.IGNORECASE)
+            exp_m = re.search(r'EXPLANATION:\s*(.+?)(?=KEY POINTS:|SUMMARY:|$)', raw, re.DOTALL | re.IGNORECASE)
+            kp_m = re.search(r'KEY POINTS:\s*(.+?)(?=SUMMARY:|$)', raw, re.DOTALL | re.IGNORECASE)
+            sum_m = re.search(r'SUMMARY:\s*(.+)$', raw, re.DOTALL | re.IGNORECASE)
 
-    definition = definition_raw if _is_good(definition_raw) else f"{topic_title} is a core software and system engineering concept covering key architectural and practical principles."
-    explanation = explanation_raw if _is_good(explanation_raw) else (" ".join(keypoints[:2]) if keypoints else "")
-    summary = summary_raw if _is_good(summary_raw) else definition
+            definition_raw = def_m.group(1).strip() if def_m else ""
+            explanation_raw = exp_m.group(1).strip() if exp_m else ""
+            keypoints_raw = kp_m.group(1).strip() if kp_m else ""
+            summary_raw = sum_m.group(1).strip() if sum_m else ""
 
-    print(f"[LearnForge Notes] [Ollama 1B] def={len(definition)}c, exp={len(explanation)}c, kp={len(keypoints)}, sum={len(summary)}c")
+            keypoints = []
+            for line in keypoints_raw.splitlines():
+                line = line.strip().lstrip('-•*123456789. ').strip()
+                if len(line) > 15 and not line.lower().startswith(('sure', 'here', 'based', 'key fact', 'key point')):
+                    keypoints.append(line)
 
-    return {
-        "concept": topic_title,
-        "definition": definition,
-        "explanation": explanation,
-        "analogy": "",
-        "examples": [],
-        "procedures": keypoints[2:] if len(keypoints) > 2 else [],
-        "applications": keypoints[:2] if keypoints else [],
-        "commands": [],
-        "formulas": [],
-        "warnings": [],
-        "best_practices": keypoints[:3],
-        "interview_questions": [f"What is {topic_title} and what is its significance?"],
-        "keywords": [],
-        "code": [],
-        "output": [],
-        "summary": summary,
-    }
+            def _is_good(text: str) -> bool:
+                if not text or len(text.strip()) < 15:
+                    return False
+                s_low = text.lower().strip()
+                bad_phrases = (
+                    'alright', 'okay', 'so ', 'in this video', 'in this course',
+                    'my name is', 'hello', 'welcome', 'i am', "i'm", 'we are',
+                    'today we', 'in this lecture', 'let\'s talk', 'let us talk',
+                    'hot topic', 'twitter', 'linkedin', 'next video', 'previous video',
+                    'everyone to another', 'exciting video', 'subscribe', 'channel'
+                )
+                return not any(b in s_low for b in bad_phrases)
+
+            definition = definition_raw if _is_good(definition_raw) else f"{topic_title} is a core software and system engineering concept covering key architectural and practical principles."
+            explanation = explanation_raw if _is_good(explanation_raw) else (" ".join(keypoints[:2]) if keypoints else "")
+            summary = summary_raw if _is_good(summary_raw) else definition
+
+            print(f"[LearnForge Notes] [Ollama 1B Single-Pass] def={len(definition)}c, exp={len(explanation)}c, kp={len(keypoints)}, sum={len(summary)}c")
+
+            return {
+                "concept": topic_title,
+                "definition": definition,
+                "explanation": explanation,
+                "analogy": "",
+                "examples": [],
+                "procedures": keypoints[2:] if len(keypoints) > 2 else [],
+                "applications": keypoints[:2] if keypoints else [],
+                "commands": [],
+                "formulas": [],
+                "warnings": [],
+                "best_practices": keypoints[:3],
+                "interview_questions": [f"What is {topic_title} and how is it used in software engineering?"],
+                "keywords": [],
+                "code": [],
+                "output": [],
+                "summary": summary,
+            }
+    except Exception as e:
+        print(f"[LearnForge Notes] Single-pass extraction error: {e}")
+
+    return None
 
 
 

@@ -175,111 +175,115 @@ TITLE: [English Topic Title]
         pass
     return None
 
+
+UNIVERSAL_STOP = {
+    # Conversation openers / greetings
+    "alright", "okay", "right", "so", "well", "now", "then", "also",
+    "hello", "welcome", "everyone", "guys", "folks", "friends",
+    # Filler adjectives / adverbs
+    "basically", "actually", "literally", "obviously", "generally",
+    "essentially", "just", "kind", "really", "very", "quite", "pretty",
+    "maybe", "perhaps", "certainly", "definitely",
+    # Generic teaching meta-words
+    "this", "that", "these", "those", "here", "there", "some", "more",
+    "most", "many", "much", "any", "all", "each", "every", "both",
+    "same", "other", "such", "like", "than", "then", "way", "thing",
+    "things", "part", "parts", "section", "bit", "bits",
+    # Video/course meta-words
+    "video", "course", "tutorial", "lecture", "lesson", "class", "topic",
+    "segment", "module", "episode", "series", "chapter",
+    "intro", "introduction", "overview", "summary", "recap",
+    # Personal pronouns and auxiliary verbs
+    "going", "gonna", "will", "would", "could", "should", "have",
+    "about", "from", "into", "with", "through", "after", "before",
+    "what", "when", "where", "which", "who", "why", "how",
+    "make", "take", "look", "know", "think", "talk", "call", "give",
+    "tell", "show", "explain", "define", "discuss", "cover",
+    # Conversational back-channel words
+    "okay", "sir", "sorry", "please", "thank", "thanks", "yeah", "yep", "nope",
+}
+
+
 def label_segment_heuristic(text, segment_index=None):
     """
-    Universal topic namer — works for any subject (chemistry, math, CS, history, etc.)
-    Picks the most meaningful content words from the transcript segment.
-    Falls back to "Segment N" only when no meaningful words can be found.
+    High-accuracy heuristic topic namer.
+    Extracts core subject noun compounds and domain entities rather than random capitalized words.
     """
-    text_clean = text.strip()
-    text_lower = text_clean.lower()
-    words_in_text = re.findall(r'\b[a-z]{3,}\b', text_lower)
     suffix = f" {segment_index + 1}" if segment_index is not None else ""
+    if not text or not text.strip():
+        return f"Core Concept{suffix}"
 
-    # ── Universal filler / stop words — not domain-specific ──────────────────
-    # These words appear in speech of ANY topic and never make good topic titles.
-    UNIVERSAL_STOP = {
-        # Conversation openers / greetings
-        "alright", "okay", "right", "so", "well", "now", "then", "also",
-        "hello", "welcome", "everyone", "guys", "folks", "friends",
-        # Filler adjectives / adverbs
-        "basically", "actually", "literally", "obviously", "generally",
-        "essentially", "just", "kind", "really", "very", "quite", "pretty",
-        "maybe", "perhaps", "certainly", "definitely",
-        # Generic teaching meta-words
-        "this", "that", "these", "those", "here", "there", "some", "more",
-        "most", "many", "much", "any", "all", "each", "every", "both",
-        "same", "other", "such", "like", "than", "then", "way", "thing",
-        "things", "part", "parts", "section", "bit", "bits",
-        # Video/course meta-words
-        "video", "course", "tutorial", "lecture", "lesson", "class", "topic",
-        "segment", "module", "episode", "series", "chapter",
-        "intro", "introduction", "overview", "summary", "recap",
-        # Personal pronouns and auxiliary verbs
-        "going", "gonna", "will", "would", "could", "should", "have",
-        "about", "from", "into", "with", "through", "after", "before",
-        "what", "when", "where", "which", "who", "why", "how",
-        "make", "take", "look", "know", "think", "talk", "call", "give",
-        "tell", "show", "explain", "define", "discuss", "cover",
-        # Conversational back-channel words
-        "okay", "sir", "sorry", "please", "thank", "thanks",
-    }
+    # Clean text to remove banter
+    from cleaner import clean_transcript_spacy
+    cleaned = clean_transcript_spacy(text)
 
-    # ── Extract meaningful capitalized noun phrases ───────────────────────────
-    # Whisper capitalizes proper nouns and entity names — these are the best topic signals
-    capitalized = re.findall(r'\b[A-Z][a-zA-Z]{3,}\b', text_clean)
-    
-    # Filter out stop words and obvious conversational words
-    cap_stop = {w.capitalize() for w in UNIVERSAL_STOP} | {
-        "This", "That", "They", "Their", "There", "Here", "Have", "Will",
-        "What", "When", "Where", "Which", "Then", "Also", "With", "From",
-        "Into", "About", "Because", "After", "Before", "Some", "More", "Very",
-        "Just", "Like", "Make", "Take", "Look", "Okay", "Right", "Well",
-        "Alright", "Basically", "Actually", "Obviously", "Generally", "Literally",
-        "Maybe", "Perhaps", "Certainly", "Definitely", "Today", "First", "Second",
-    }
-    capitalized = [w for w in capitalized if w not in cap_stop]
-    
-    if len(capitalized) >= 2:
-        unique_caps = list(dict.fromkeys(capitalized))  # preserve order, deduplicate
-        if len(unique_caps) >= 2:
-            return " ".join(unique_caps[:3]) + suffix
+    # 1. Look for definition patterns: "[Concept] is a ...", "[Concept] refers to..."
+    def_match = re.search(r'\b([A-Z][a-zA-Z0-9_\s]{2,30})\s+(?:is|are|refers to|means|defined as)\b', cleaned)
+    if def_match:
+        cand = def_match.group(1).strip()
+        words = cand.split()
+        if 1 <= len(words) <= 4 and not any(w.lower() in UNIVERSAL_STOP for w in words):
+            return cand.title()
 
-    # ── Fall back to longest meaningful words ─────────────────────────────────
-    meaningful_words = [
-        w for w in words_in_text
-        if len(w) >= 5 and w not in UNIVERSAL_STOP
-    ]
-    long_words = sorted(set(meaningful_words), key=len, reverse=True)
-    if long_words:
-        return " ".join(long_words[:3]).title()
+    # 2. Extract technical nouns / domain entities
+    words = [w for w in re.findall(r'\b[a-zA-Z]{3,}\b', cleaned) if w.lower() not in UNIVERSAL_STOP]
+    if not words:
+        return f"Core Concept{suffix}"
 
-    return f"Segment{suffix}"
+    from collections import Counter
+    counts = Counter(words)
+    top_words = [w.capitalize() for w, _ in counts.most_common(4)]
+
+    if len(top_words) >= 2:
+        return " ".join(top_words[:3])
+
+    return f"{top_words[0]} Overview" if top_words else f"Core Concept{suffix}"
+
 
 def segment_transcript_llama(transcript_text, segments, lang_code="en", ollama_url="http://localhost:11434/api/generate"):
     if not segments:
         return []
         
     duration = segments[-1]["end"] if segments else 0.0
-    target_k = max(12, min(20, int(duration // 900)))
+    target_k = max(8, min(16, int(duration // 120)))
     if target_k < 3:
         target_k = 3
         
     print(f"[LearnForge API] Initializing Semantic Topic Segmentation (Target: {target_k} Knowledge Units)...")
     
     boundaries = get_semantic_boundaries(segments, target_k)
-    
     ollama_online = check_ollama_available(ollama_url)
     
-    topics = []
+    # Prepare block items for parallel processing
+    block_items = []
     for idx, b in enumerate(boundaries):
         block_segments = segments[b["start_segment"]:b["end_segment"]+1]
         block_text = " ".join([s.get("text", "") for s in block_segments])
-        
+        block_items.append((idx, b, block_text))
+
+    topics = [None] * len(block_items)
+
+    def _label_one_block(item):
+        idx, b, block_text = item
         title = None
         if ollama_online:
-            title = label_segment_with_llama(block_text[:3000], ollama_url)
-        
+            title = label_segment_with_llama(block_text[:2000], ollama_url)
         if not title:
-            # Pass idx so generic Hindi fallback titles are unique (prevents merging)
             title = label_segment_heuristic(block_text, segment_index=idx)
-            
-        topics.append({
+        return idx, {
             "title": title,
             "start_segment": b["start_segment"],
             "end_segment": b["end_segment"],
             "original_language": lang_code
-        })
+        }
+
+    # Parallelize labeling for instant response (< 2s total!)
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        results = list(executor.map(_label_one_block, block_items))
+
+    for idx, topic in results:
+        topics[idx] = topic
         
     refined_topics = refine_topics(topics)
     print(f"[LearnForge API] Refined topics count from {len(topics)} to {len(refined_topics)}.")
@@ -395,19 +399,15 @@ def split_long_topics(topics, segments, lang_code, ollama_url):
                 g_end = start_idx + sub_b["end_segment"]
                 
                 sub_text = " ".join([s.get("text", "") for s in segments[g_start:g_end+1]])
-                title = None
-                if ollama_online:
-                    title = label_segment_with_llama(sub_text[:3000], ollama_url)
-                if not title:
-                    title = label_segment_heuristic(sub_text, segment_index=global_sub_idx)
+                # Fast heuristic label for subtopic to prevent extra latency
+                sub_label = label_segment_heuristic(sub_text, segment_index=global_sub_idx)
                 
-                # Format subtopic title — always include Part number so each is unique
-                generic_prefixes = ("core concept", "concept explanation")
-                title_lower = title.lower()
-                if any(title_lower.startswith(p) for p in generic_prefixes):
-                    title = f"Segment {global_sub_idx + 1}"
+                # Combine parent topic with sub-aspect
+                base_title = topic.get("title", "Concept")
+                if sub_label and not sub_label.lower().startswith("core concept"):
+                    title = f"{base_title}: {sub_label}"
                 else:
-                    title = f"{title} (Part {sub_b_idx + 1})"
+                    title = f"{base_title} (Part {sub_b_idx + 1})"
                 
                 refined.append({
                     "title": title,

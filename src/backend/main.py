@@ -413,33 +413,21 @@ def _perform_whisper_transcription(audio_path: str, video_id: str):
         return _whisper_model
 
     def _execute_whisper(model_instance):
-        try:
-            lang_code_raw, lang_prob, _ = model_instance.detect_language(
-                audio_path,
-                vad_filter=True,
-                language_detection_segments=1,
-            )
-            language_code = lang_code_raw if lang_code_raw else "en"
-            print(f"[LearnForge API] Detected language: {language_code} (prob={lang_prob:.2f})")
-        except Exception as lang_err:
-            print(f"[LearnForge API] Language detection failed: {lang_err}. Defaulting to English.")
-            language_code = "en"
-
-        whisper_task = "transcribe" if language_code == "en" else "translate"
-        print(f"[LearnForge API] Whisper task='{whisper_task}' for source language '{language_code}'")
-
         _transcription_progress[video_id] = {"segments": 0, "audio_pos": 0.0, "done": False}
 
+        # Use task='translate' so Whisper natively outputs clean English for any input language (Hindi/Hinglish/English)
         segments_iter, info = model_instance.transcribe(
             audio_path,
             beam_size=1,
             best_of=1,
-            language=language_code,
-            task=whisper_task,
+            task="translate",
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=500, speech_pad_ms=200),
             condition_on_previous_text=False,
         )
+        language_code = getattr(info, "language", "en") if info else "en"
+        lang_prob = getattr(info, "language_probability", 1.0) if info else 1.0
+        print(f"[LearnForge API] Whisper transcription running. Detected source language: '{language_code}' (prob={lang_prob:.2f}) -> English output")
 
         segments = []
         full_text_parts = []
